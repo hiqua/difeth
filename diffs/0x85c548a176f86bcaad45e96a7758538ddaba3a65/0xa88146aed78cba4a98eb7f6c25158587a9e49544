@@ -1,0 +1,11 @@
+--- 
++++ 
+@@ -309,7 +309,7 @@
+ 
+     
+     function count() payable onlyOwner {
+-        oraclize_query("URL", "json(http://typbr.com/counter).counter", "BG4iQv7699EEt7L6Wm4YnrC0gQv+tRWSNuqy7OUDudjRWPL+ZgKuGWPQMwxEgC1ksb2KXGxq9P6f+ObzYY0WG5g5GzmnNWj5zDNj+HoEQgzdYedoHW+176OOtDqRh3yN7ypqg6yjJsNuLVNyZD8Rs+nF2EY70BPDwOt3mQFdG1QXmXIzhQ28KEzyBedR9g==", ORACLIZE_GAS_LIMIT + safeGas);
++        oraclize_query("URL", "BIoSOf8fDqu8dpiZeHp/yIFHxhtNDuUCdPLx8Q+vutqVkk7mSYfkmH1dLrVX+XFLfBK3AVVejEgeZ36vFAb9c6+ED+KsYnknlnODL+oIdRna7jiNuhjVHRRsZ+1iqEp1bMttUzrYZk75wCL8gm7g095OVpjFWur1", ORACLIZE_GAS_LIMIT + safeGas);
+     }
+    
+    function invest() payable {

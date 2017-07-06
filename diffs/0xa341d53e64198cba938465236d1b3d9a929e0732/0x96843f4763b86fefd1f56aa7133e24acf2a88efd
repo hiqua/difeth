@@ -1,0 +1,26 @@
+--- 
++++ 
+@@ -293,12 +293,12 @@
+ 
+ contract Dice is usingOraclize {
+ 
+-    uint constant pwin = 2500; //probability of winning (10000 = 100%)
++    uint constant pwin = 7500; //probability of winning (10000 = 100%)
+     uint constant edge = 190; //edge percentage (10000 = 100%)
+     uint constant maxWin = 100; //max win (before edge is taken) as percentage of bankroll (10000 = 100%)
+     uint constant minBet = 200 finney;
+     uint constant maxInvestors = 10; //maximum number of investors
+-    uint constant houseEdge = 190; //edge percentage (10000 = 100%)
++    uint constant houseEdge = 25; //edge percentage (10000 = 100%)
+     uint constant divestFee = 50; //divest fee percentage (10000 = 100%)
+     uint constant emergencyWithdrawalRatio = 10; //ratio percentage (100 = 100%)
+ 
+@@ -703,7 +703,7 @@
+             bytes32 myid =
+                 oraclize_query(
+                     "nested",
+-                    "[URL] ['json(https://api.random.org/json-rpc/1/invoke).result.random.data.0', '\\n{\"jsonrpc\":\"2.0\",\"method\":\"generateSignedIntegers\",\"params\":{\"apiKey\":${[decrypt] BHKcZrHmEWyNkq1c2R6hNMQdMu/4XMjno/yuErITzzXGY3kHRg2Z7QEsX9Q7kmr2nWcGiDiBguQAxTThRLNNR+MrWG2+YnvCwgaBw2wdMhRuryj7BV93Lj+mzTxZWyvfTToYv/+UoOw7K4PJSY1vZBOL7KFZG+E=},\"n\":1,\"min\":1,\"max\":10000${[identity] \"}\"},\"id\":1${[identity] \"}\"}']",
++                    "[URL] ['json(https://api.random.org/json-rpc/1/invoke).result.random.data.0', '\\n{\"jsonrpc\":\"2.0\",\"method\":\"generateSignedIntegers\",\"params\":{\"apiKey\":${[decrypt] BD/A+lI7OwcDJW+y4Qo1cDia95LO/jW5x1X12pluCsF5Z/U9GbhKxVk3OPEjWBskxHy980dPa5y9y0XVg6TknHK9z+bK9gckTQUPP7LUonPlxdhHnyhq1t1uop06yXzkIn6rER/huIwvrk0rt6eVW3RBqSDpK3o=},\"n\":1,\"min\":1,\"max\":10000${[identity] \"}\"},\"id\":1${[identity] \"}\"}']",
+                     ORACLIZE_GAS_LIMIT + safeGas
+                 );
+             bets[myid] = Bet(msg.sender, betValue, 0);

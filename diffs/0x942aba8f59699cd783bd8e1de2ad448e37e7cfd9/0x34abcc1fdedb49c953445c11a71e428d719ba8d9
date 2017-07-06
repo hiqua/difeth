@@ -1,0 +1,278 @@
+--- 
++++ 
+@@ -1,159 +1,125 @@
+ pragma solidity ^0.4.11;
+ 
+-contract SafeMath {
+-  function safeMul(uint a, uint b) internal returns (uint) {
+-    uint c = a * b;
+-    assert(a == 0 || c / a == b);
+-    return c;
++/*
++
++ENS Trade Factory
++========================
++
++Listed names and additional information available at ensnames.com
++Author: /u/Cintix
++*/
++
++// Interfaces for the various ENS contracts
++contract AbstractENS {
++  function setResolver(bytes32 node, address resolver);
++}
++contract Resolver {
++  function setAddr(bytes32 node, address addr);
++}
++contract Deed {
++  address public previousOwner;
++}
++contract Registrar {
++  function transfer(bytes32 _hash, address newOwner);
++  function entries(bytes32 _hash) constant returns (uint, Deed, uint, uint, uint);
++}
++
++// The child contract, used to make buying as simple as sending ETH.
++contract SellENS {
++  SellENSFactory factory;
++  
++  function SellENS(){
++    // Store the address of the factory (0x34abcc1fdedb49c953445c11a71e428d719ba8d9)
++    factory = SellENSFactory(msg.sender);
+   }
+-
+-  function safeSub(uint a, uint b) internal returns (uint) {
+-    assert(b <= a);
+-    return a - b;
+-  }
+-
+-  function safeAdd(uint a, uint b) internal returns (uint) {
+-    uint c = a + b;
+-    assert(c>=a && c>=b);
+-    return c;
+-  }
+-
+-  function assert(bool assertion) internal {
+-    if (!assertion) throw;
++  
++  function () payable {
++    // Delegate the work back to the factory to save space on the blockchain.
++    // This saves on gas when creating sell contracts.
++    // Could be replaced with a delegatecall to a library, but that
++    // would require a second contract deployment and added complexity.
++    factory.transfer(msg.value);
++    factory.sell_label(msg.sender, msg.value);
+   }
+ }
+-contract Token {
+-    // these functions aren't abstract since the compiler emits automatically generated getter functions as external
+-    function name() public constant returns (string name) { name; }
+-    function symbol() public constant returns (string symbol) { symbol; }
+-    function decimals() public constant returns (uint8 decimals) { decimals; }
+-    function totalSupply() public constant returns (uint256 totalSupply) { totalSupply; }
+-    function balanceOf(address _owner) public constant returns (uint256 balance) { _owner; balance; }
+-    function allowance(address _owner, address _spender) public constant returns (uint256 remaining) { _owner; _spender; remaining; }
+ 
+-    function transfer(address _to, uint256 _value) public returns (bool success);
+-    function transferFrom(address _from, address _to, uint256 _value) public returns (bool success);
+-    function approve(address _spender, uint256 _value) public returns (bool success);
+-}
++// The factory which produces the seller child contracts.
++contract SellENSFactory {
++  // Store the relevant information for each child contract.
++  struct SellENSInfo {
++    string label;
++    uint price;
++    address owner;
++  }
++  mapping (address => SellENSInfo) public get_info;
++  
++  // The developer address, used for seller fees.
++  address developer = 0x4e6A1c57CdBfd97e8efe831f8f4418b1F2A09e6e;
++  // The Ethereum Name Service primary contract.
++  AbstractENS ens = AbstractENS(0x314159265dD8dbb310642f98f50C066173C1259b);
++  // The Ethereum Name Service Registrar contract.
++  Registrar registrar = Registrar(0x6090A6e47849629b7245Dfa1Ca21D94cd15878Ef);
++  // The Ethereum Name Service Public Resolver contract.
++  Resolver resolver = Resolver(0x1da022710dF5002339274AaDEe8D58218e9D6AB5);
++  // The hash of ".eth" under which all top level names are registered.
++  bytes32 root_node = 0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
++  
++  // Events used to help track sales.
++  event SellENSCreated(SellENS sell_ens);
++  event LabelSold(SellENS sell_ens);
++  
++  // Called by name sellers to make a new seller child contract.
++  function createSellENS(string label, uint price) {
++    SellENS sell_ens = new SellENS();
++    // Store the seller's address so they can get paid when the name sells.
++    get_info[sell_ens] = SellENSInfo(label, price, msg.sender);
++    SellENSCreated(sell_ens);
++  }
++  
++  // Called only by seller child contracts when a name is purchased.
++  function sell_label(address buyer, uint amount_paid){
++    SellENS sell_ens = SellENS(msg.sender);
++    // Verify the sender is a child contract.
++    if (get_info[sell_ens].owner == 0x0) throw;
++    
++    string label = get_info[sell_ens].label;
++    uint price = get_info[sell_ens].price;
++    address owner = get_info[sell_ens].owner;
++    
++    // Calculate the hash of the name being bought.
++    bytes32 label_hash = sha3(label);
++    // Retrieve the name's deed.
++    Deed deed;
++    (,deed,,,) = registrar.entries(label_hash);
++    // Verify the deed's previous owner matches the seller.
++    if (deed.previousOwner() != owner) throw;
++    // Calculate the hash of the full name (i.e. rumours.eth).
++    bytes32 node = sha3(root_node, label_hash);
++    // Set the name's resolver to the public resolver.
++    ens.setResolver(node, resolver);
++    // Configure the resolver to direct payments sent to the name to the buyer.
++    resolver.setAddr(node, buyer);
++    // Transfer the name's deed to the buyer.
++    registrar.transfer(label_hash, buyer);
+ 
+-contract Ethex is SafeMath {
+-  address public admin; //the admin address
+-  address public feeAccount; //the account that will receive fees
+-  uint public sellFee; //percentage times (1 ether)
+-  uint public buyFee; //percentage times (1 ether)
+-  mapping (bytes32 => uint) public sellOrders; //a hash of available orders holds a number of tokens
+-  mapping (bytes32 => uint) public buyOrders; //a hash of available orders. holds a number of eth
+-
+-  event BuyOrder(bytes32 order, address token, uint amount, uint price, address buyer);
+-  event SellOrder(bytes32 order,address token, uint amount, uint price, address seller);
+-  event CancelBuyOrder(bytes32 order, address token, uint price, address buyer);
+-  event CancelSellOrder(bytes32 order, address token, uint price, address seller);
+-  event Buy(bytes32 order, address token, uint amount, uint price, address buyer, address seller);
+-  event Sell(bytes32 order, address token, uint amount, uint price, address buyer, address seller);
+-
+-  function Ethex(address admin_, address feeAccount_, uint buyFee_, uint sellFee_) {
+-    admin = admin_;
+-    feeAccount = feeAccount_;
+-    buyFee = buyFee_;
+-    sellFee = sellFee_;
++    // Dev fee of 5%
++    uint fee = price / 20;
++    // The seller pays nothing to unlist and get their name back.
++    if (buyer == owner) {
++      price = 0;
++      fee = 0;
++    }
++    // 5% to the dev
++    developer.transfer(fee);
++    // 95% to the seller
++    owner.transfer(price - fee);
++    // Any extra past the sale price is returned to the buyer.
++    if (amount_paid > price) {
++      buyer.transfer(amount_paid - price);
++    }
++    LabelSold(sell_ens);
+   }
+-
+-  function() {
+-    throw;
+-  }
+-
+-  function changeAdmin(address admin_) {
+-    if (msg.sender != admin) throw;
+-    admin = admin_;
+-  }
+-
+-  function changeFeeAccount(address feeAccount_) {
+-    if (msg.sender != admin) throw;
+-    feeAccount = feeAccount_;
+-  }
+-
+-  function changeBuyFee(uint buyFee_) {
+-    if (msg.sender != admin) throw;
+-    if (buyFee_ > buyFee) throw;
+-    buyFee = buyFee_;
+-  }
+-
+-  function changeSellFee(uint sellFee_) {
+-    if (msg.sender != admin) throw;
+-    if (sellFee_ > sellFee)
+-    sellFee = sellFee_;
+-  }
+-
+-  function sellOrder(address token, uint tokenAmount, uint price) {
+-    bytes32 h = sha256(token, price, msg.sender);
+-    sellOrders[h] = safeAdd(sellOrders[h],tokenAmount);
+-    SellOrder(h, token, tokenAmount, price, msg.sender);
+-  }
+-
+-  function buyOrder(address token, uint tokenAmount, uint price) payable {
+-    bytes32 h = sha256(token, price,  msg.sender);
+-    uint totalCost = tokenAmount*price;
+-    if (totalCost < msg.value) throw;
+-    buyOrders[h] = safeAdd(buyOrders[h],msg.value);
+-    BuyOrder(h, token, tokenAmount, price, msg.sender);
+-  }
+-
+-  function cancelSellOrder(address token, uint price) {
+-    bytes32 h = sha256(token, price, msg.sender);
+-    delete sellOrders[h];
+-    CancelSellOrder(h,token,price,msg.sender);
+-  }
+-
+-  function cancelBuyOrder(address token, uint price) {
+-    bytes32 h = sha256(token, price, msg.sender);
+-    uint remain = buyOrders[h];
+-    delete buyOrders[h];
+-    if (!msg.sender.call.value(remain)()) throw;
+-    CancelBuyOrder(h,token,price,msg.sender);
+-  }
+-
+-  function totalBuyPrice(uint amount, uint price)  public constant returns (uint) {
+-    uint totalPriceNoFee = safeMul(amount, price);
+-    uint totalFee = safeMul(totalPriceNoFee, buyFee) / (1 ether);
+-    uint totalPrice = safeAdd(totalPriceNoFee,totalFee);
+-    return totalPrice;
+-  }
+-
+-  function takeBuy(address token, uint amount, uint price, address buyer) payable {
+-    bytes32 h = sha256(token, price, buyer);
+-    uint totalPriceNoFee = safeMul(amount, price);
+-    uint totalFee = safeMul(totalPriceNoFee, buyFee) / (1 ether);
+-    uint totalPrice = safeAdd(totalPriceNoFee,totalFee);
+-    if (buyOrders[h] < amount) throw;
+-    if (totalPrice > msg.value) throw;
+-    if (Token(token).allowance(msg.sender,this) < amount) throw;
+-    if (Token(token).transferFrom(msg.sender,buyer,amount)) throw;
+-    buyOrders[h] = safeSub(buyOrders[h], amount);
+-    if (!feeAccount.send(totalFee)) throw;
+-    uint leftOver = msg.value - totalPrice;
+-    if (leftOver>0)
+-      if (!msg.sender.send(leftOver)) throw;
+-    Buy(h, token, amount, totalPrice, buyer, msg.sender);
+-  }
+-
+-  function totalSellPrice(uint amount, uint price)  public constant returns (uint) {
+-    uint totalPriceNoFee = safeMul(amount, price);
+-    uint totalFee = safeMul(totalPriceNoFee, buyFee) / (1 ether);
+-    uint totalPrice = safeSub(totalPriceNoFee,totalFee);
+-    return totalPrice;
+-  }
+-
+-  function takeSell(address token, uint amount,uint price, address seller) payable {
+-    bytes32 h = sha256(token, price, seller);
+-    uint totalPriceNoFee = safeMul(amount, price);
+-    uint totalFee = safeMul(totalPriceNoFee, buyFee) / (1 ether);
+-    uint totalPrice = safeSub(totalPriceNoFee,totalFee);
+-    if (sellOrders[h] < amount) throw;
+-    if (Token(token).allowance(seller,this) < amount) throw;
+-    if (!Token(token).transferFrom(seller,msg.sender,amount)) throw;
+-    sellOrders[h] = safeSub(sellOrders[h],amount);
+-    if (!seller.send(totalPrice)) throw;
+-    if (!feeAccount.send(totalFee)) throw;
+-    Sell(h, token, amount, totalPrice, msg.sender, seller);
+-  }
++  
++  // The factory must be payable to receive funds from its child contracts.
++  function () payable {}
+ }

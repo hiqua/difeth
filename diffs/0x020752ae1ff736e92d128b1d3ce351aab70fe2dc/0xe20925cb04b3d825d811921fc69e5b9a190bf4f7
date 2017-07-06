@@ -1,0 +1,20 @@
+--- 
++++ 
+@@ -653,7 +653,7 @@
+ 
+ 
+  function proxyPayment(address _owner) payable returns(bool) {
+-        return false;
++        throw;
+     }
+ 
+ /// @notice Notifies the controller about a transfer, for this SWTConverter all
+@@ -691,7 +691,7 @@
+ 
+         // transfer ARC to the vault address. caller needs to have an allowance from
+         // this controller contract for _amount before calling this or the transferFrom will fail.
+-        if (!arcToken.transferFrom(msg.sender, vaultAddress, _amount)) {
++        if (!arcToken.transferFrom.gas(100000)(msg.sender, vaultAddress, _amount)) {
+             throw;
+         }
+ 

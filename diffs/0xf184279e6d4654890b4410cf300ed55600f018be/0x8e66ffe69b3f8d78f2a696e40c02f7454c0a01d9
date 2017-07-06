@@ -1,0 +1,108 @@
+--- 
++++ 
+@@ -30,20 +30,13 @@
+         decimals = 18;
+     }
+ 
+-    function buy() public payable {
+-      balanceOf[msg.sender] = msg.value;
+-      totalSupply += msg.value;
+-      Bought(msg.sender, msg.value);
+-    }  
+-
+-
+-
+ }
+ 
+ contract SwarmRedistribution is RES {
+     
+-    address JohanNygren;
+-        
++    address public JohanNygren;
++    bool public campaignOpen;    
++
+     struct dividendPathway {
+       address from;
+       uint amount;
+@@ -63,7 +56,7 @@
+     }
+     
+     /* Generate a swarm tree */
+-    Node[] public swarmTree;
++    Node[] swarmTree;
+     
+     mapping(address => bool) inSwarmTree;
+     
+@@ -76,18 +69,35 @@
+     /* Tax-rate in parts per thousand */
+     taxRate = 20;
+     JohanNygren = 0x948176CB42B65d835Ee4324914B104B66fB93B52;
++    campaignOpen = true;
++    
+     }
+     
+     modifier onlyJohan {
+       if(msg.sender != JohanNygren) throw;
+       _;
+     }
++
++    modifier isOpen {
++      if(campaignOpen != true) throw;
++      _;
++    }
+     
+     function changeJohanNygrensAddress(address _newAddress) onlyJohan {
+       JohanNygren = _newAddress;
+     }
+-
+-    function buyViaJohan() public payable {
++    
++    function closeCampaign() onlyJohan {
++        campaignOpen == false;
++    }
++
++    function buy() isOpen public payable {
++      balanceOf[msg.sender] = msg.value;
++      totalSupply += msg.value;
++      Bought(msg.sender, msg.value);
++    }  
++
++    function buyViaJohan() isOpen public payable {
+       balanceOf[msg.sender] = msg.value;
+       totalSupply += msg.value;  
+ 
+@@ -104,6 +114,8 @@
+     function sell(uint256 _value) public {
+       if(balanceOf[msg.sender] < _value) throw;
+       balanceOf[msg.sender] -= _value;
++    
++      if (!msg.sender.send(_value)) throw;
+ 
+       totalSupply -= _value;
+       Sold(msg.sender, _value);
+@@ -111,7 +123,7 @@
+     }
+ 
+     /* Send coins */
+-    function transfer(address _to, uint256 _value) {
++    function transfer(address _to, uint256 _value) isOpen {
+         /* reject transaction to self to prevent dividend pathway loops*/
+         if(_to == msg.sender) throw;
+         
+@@ -173,6 +185,7 @@
+                           });
+                           
+                   swarmTree.push(node);
++                  inSwarmTree[node.node] = true;
+                   iterateThroughSwarm(node.node, timeStamp);
+               }
+           }
+@@ -204,6 +217,8 @@
+           dividendPathways[parent][index].amount -= _taxCollected; 
+         }
+         else removeDividendPathway(parent, index);
++        
++        inSwarmTree[node] = false;
+         
+         /* Notifiy anyone listening that this swarm took place */
+         if(isJohan) Swarm(_leaf, swarmTree[i].node, share);

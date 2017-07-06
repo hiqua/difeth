@@ -1,0 +1,55 @@
+--- 
++++ 
+@@ -885,6 +885,9 @@
+   /** What is the minimum buy in */
+   uint public weiMinimumLimit;
+ 
++  /** What is the maximum buy in */
++  uint public weiMaximumLimit;
++
+   /** How many weis total we are allowed to collect. */
+   uint public weiCap;
+ 
+@@ -917,7 +920,7 @@
+   /**
+    * Create presale contract where lock up period is given days
+    */
+-  function PreICOProxyBuyer(address _owner, uint _freezeEndsAt, uint _weiMinimumLimit, uint _weiCap) {
++  function PreICOProxyBuyer(address _owner, uint _freezeEndsAt, uint _weiMinimumLimit, uint _weiMaximumLimit, uint _weiCap) {
+ 
+     owner = _owner;
+ 
+@@ -931,7 +934,12 @@
+       throw;
+     }
+ 
++    if(_weiMaximumLimit == 0) {
++      throw;
++    }
++
+     weiMinimumLimit = _weiMinimumLimit;
++    weiMaximumLimit = _weiMaximumLimit;
+     weiCap = _weiCap;
+     freezeEndsAt = _freezeEndsAt;
+   }
+@@ -963,8 +971,8 @@
+ 
+     balances[investor] = safeAdd(balances[investor], msg.value);
+ 
+-    // Need to fulfill minimum limit
+-    if(balances[investor] < weiMinimumLimit) {
++    // Need to satisfy minimum and maximum limits
++    if(balances[investor] < weiMinimumLimit || balances[investor] > weiMaximumLimit) {
+       throw;
+     }
+ 
+@@ -1077,9 +1085,6 @@
+     if(balances[investor] == 0) throw;
+     uint amount = balances[investor];
+     delete balances[investor];
+-    // This was originally "send()" but was replaced with call.value()() to
+-    // forward gas, if there happens to be a complicated multisig implementation
+-    // which would need more gas than the gas stipend:
+     if(!(investor.call.value(amount)())) throw;
+     Refunded(investor, amount);
+   }

@@ -1,0 +1,175 @@
+--- 
++++ 
+@@ -10,9 +10,11 @@
+    function getCountTempHolders() external constant returns(uint256);
+    function getItemTempHolders(uint256 index) external constant returns(address);
+    function tempTokensBalanceOf( address who ) external constant returns (uint256);
++   function transfer( address to, uint256 value) returns (bool ok);
++   function transferFrom( address from, address to, uint256 value) returns (bool ok);
+ }
+ 
+-contract SmartRouletteDividend {
++contract SmartRouletteTokenDividend {
+ 
+ 	address developer;
+ 	address manager;
+@@ -20,11 +22,14 @@
+ 	SmartRouletteToken smartToken;
+ 	uint256 decimal;
+ 
++	enum Status {Initialized, EthSentWaitingForTokens, TokensReceived, PaymentsSent}
++
+ 	struct DividendInfo
+ 	{
+ 	   uint256 amountDividend;
++	   uint256 amountDividendInTokens;
+ 	   uint256 blockDividend;
+-	   bool AllPaymentsSent;
++	   Status status;
+ 	}
+ 
+ 	DividendInfo[] dividendHistory;
+@@ -34,12 +39,14 @@
+ 	uint256 public tokensNeededToGetPayment = 1000;
+ 
+ 
+-	function SmartRouletteDividend() {
++	function SmartRouletteTokenDividend() {
+ 		developer = msg.sender;
+ 		manager = msg.sender;
+ 
++		// 0xC631333d0451e95E4F20940B04a68fa5602d5eAC
+ 		smartToken = SmartRouletteToken(0xcced5b8288086be8c38e23567e684c3740be4d48); //test 0xc46ed6ba652bd552671a46045b495748cd10fa04 main 0x2a650356bd894370cc1d6aba71b36c0ad6b3dc18
+-		decimal = 10**uint256(smartToken.decimals());		
++		decimal = 10**uint256(smartToken.decimals());	
++		// 0x69000c5653F211164aE2b3Cc47a243db647F7EAb	
+ 	}
+ 	
+ 
+@@ -62,12 +69,6 @@
+ 		return dividendHistory.length;
+ 	}
+ 
+-	function SetAllPaymentsSent(uint256 DividendNo) isManager
+-	{
+-		dividendHistory[DividendNo].AllPaymentsSent = true;
+-		// all fees (30000 gas * tx.gasprice for each transaction)
+-		if (manager.send(this.balance) == false) throw;
+-	}
+ 
+ 	function changeDeveloper(address new_developer)
+ 	isDeveloper
+@@ -87,19 +88,21 @@
+ 		suicide(developer);
+ 	}
+ 
+-	function getDividendInfo(uint256 index) constant returns(uint256 amountDividend, uint256 blockDividend, bool AllPaymentsSent)
++	function getDividendInfo(uint256 index) constant returns(uint256 amountDividend, uint256 amountDividendInTokens, uint256 blockDividend, Status status)
+ 	{
+ 		amountDividend  = dividendHistory[index].amountDividend;
++		amountDividendInTokens = dividendHistory[index].amountDividendInTokens;
+ 		blockDividend   = dividendHistory[index].blockDividend;
+-		AllPaymentsSent = dividendHistory[index].AllPaymentsSent;
++		status = dividendHistory[index].status;
+ 	}
+ 
+ 
+ 	//  get total count tokens (to calculate profit for one token)
+-	function get_CountProfitsToken() constant returns(uint256){
++	function get_CountProfitsToken() constant returns(uint256)
++	{
+ 		uint256 countProfitsTokens = 0;
+ 
+-		mapping(address => bool) uniqueHolders;
++        mapping(address => bool) uniqueHolders;
+ 
+ 		uint256 countHolders = smartToken.getCountHolders();
+ 		for(uint256 i=0; i<countHolders; i++)
+@@ -240,37 +243,54 @@
+ 
+ 		nextPosition = 0;
+ 	}
+-	// Get profit for specified token holder
+-	// Function should be executed in blockDividend ! (see struct DividendInfo)
+-	// Don't call this function via etherescan.io
+-	// Example how to call via JavaScript and web3
+-	// var abiDividend = [...];
+-	// var holderAddress = "0xdd94ddf50485f41491c415e7133100e670cd4ef3";
+-	// var dividendIndex = 1;       // starts from zero
+-	// var blockDividend = 3527958; // see function getDividendInfo
+-	// web3.eth.contract(abiDividend).at("0x600e18779b6aC789b95a12C30b5863E842F4ae1d").get_HoldersProfit(dividendIndex, holderAddress, blockDividend, function(err, profit){
+-	//    alert("Your profit " + web3.fromWei(profit).toString(10) + "ETH");
+-	// });
+-	function get_HoldersProfit(uint256 dividendPaymentNum, address holder) constant returns(uint256){
++
++	function get_HoldersProfit(address holder, uint256 amountDividendInTokens) constant returns(uint256){
+ 		uint256 profit = 0;
+-		if(holder != address(0x0) && dividendHistory.length > 0 && dividendPaymentNum < dividendHistory.length){
++		if(holder != address(0x0) && amountDividendInTokens > 0)
++		{
+ 			uint256 count_tokens = smartToken.balanceOf(holder) + smartToken.tempTokensBalanceOf(holder);
+ 			if(count_tokens/decimal >= tokensNeededToGetPayment){
+-				profit = (count_tokens*dividendHistory[dividendPaymentNum].amountDividend)/get_CountProfitsToken();
++				profit = (count_tokens * amountDividendInTokens) / get_CountProfitsToken();
+ 			}
+ 		}
+ 		return profit;
+ 	}
+ 
+-	// Since the full cycle of calculations in a smart contract costs a big amount of gas and the smart contract is not able to calculate the exact block
+-	// the major part of calculations is transferred to the server out of the smart contract (though using functions of reading the smart contract)
+-	// In order to confirm fairness of dividends distribution the validating interface with open source code is used (the open version is available at https://smartroulette.io/dividends)
+-	// The source code is available at the address https://github.com/Smartroulette/SmartRouletteDividends
++	function takeEthForExchange(uint256 dividendPaymentNum) isManager 
++	{
++		if (dividendHistory[dividendPaymentNum].status == Status.Initialized)
++		{
++			if (manager.send(dividendHistory[dividendPaymentNum].amountDividend) == false) throw;
++			dividendHistory[dividendPaymentNum].status = Status.EthSentWaitingForTokens;
++		}		
++	}
++
++	function receiveTokens(uint256 dividendPaymentNum,uint256 tokens) isManager
++	{
++		if (tokens == 0) throw;
++
++		if (dividendHistory[dividendPaymentNum].status == Status.EthSentWaitingForTokens)
++		{
++			if (!smartToken.transferFrom(msg.sender, this, tokens)) throw;
++
++			dividendHistory[dividendPaymentNum].amountDividendInTokens = tokens;
++
++			dividendHistory[dividendPaymentNum].status = Status.TokensReceived;
++		}
++	}
++
++
+ 	function send_DividendToAddress(address holder, uint256 amount) isManager 
+ 	{
+-		uint256 avgGasValue = 30000;
+-		if (amount < avgGasValue * tx.gasprice) throw;
+-		if(holder.send(amount - avgGasValue * tx.gasprice) == false) throw;	
++		if (!smartToken.transfer(holder, amount)) throw;
++	}
++
++	function paymentsFinished(uint256 dividendPaymentNum) isManager
++	{
++		if (dividendHistory[dividendPaymentNum].status == Status.TokensReceived) 
++		{
++			dividendHistory[dividendPaymentNum].status = Status.PaymentsSent;
++		}
+ 	}
+ 
+ 	function () payable
+@@ -283,10 +303,7 @@
+ 			else if (gameAddress != msg.sender)
+ 				throw;
+ 
+-			// do not send new payment until previous is done
+-			if (dividendHistory.length > 0 && dividendHistory[dividendHistory.length - 1].AllPaymentsSent == false) throw;
+-
+-			dividendHistory.push(DividendInfo(msg.value, block.number, false));			
++			dividendHistory.push(DividendInfo(msg.value, 0, block.number, Status.Initialized));			
+ 		}
+ 		else 
+ 		{

@@ -1,0 +1,398 @@
+--- 
++++ 
+@@ -1,182 +1,216 @@
+-pragma solidity ^0.4.11;
+-
+-// SafeMath handles math with overflow.
+-contract SafeMath {
+-    function safeAdd(uint256 x, uint256 y) internal returns(uint256) {
+-        uint256 z = x + y;
+-        assert((z >= x) && (z >= y));
+-        return z;
++pragma solidity ^0.4.6;
++
++contract Token {
++    bytes32 public standard;
++    bytes32 public name;
++    bytes32 public symbol;
++    uint256 public totalSupply;
++    uint8 public decimals;
++    bool public allowTransactions;
++    mapping (address => uint256) public balanceOf;
++    mapping (address => mapping (address => uint256)) public allowance;
++    function transfer(address _to, uint256 _value) returns (bool success);
++    function approveAndCall(address _spender, uint256 _value, bytes _extraData) returns (bool success);
++    function approve(address _spender, uint256 _value) returns (bool success);
++    function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
++}
++
++
++contract DVIP {
++  function feeFor(address from, address to, uint256 amount) constant external returns (uint256 value);
++}
++
++contract Assertive {
++  function assert(bool assertion) {
++    if (!assertion) throw;
++  }
++}
++
++contract Owned is Assertive {
++  address internal owner;
++  event SetOwner(address indexed previousOwner, address indexed newOwner);
++  function Owned () {
++    owner = msg.sender;
++  }
++  modifier onlyOwner {
++    assert(msg.sender == owner);
++    _;
++  }
++  function setOwner(address newOwner) onlyOwner {
++    SetOwner(owner, newOwner);
++    owner = newOwner;
++  }
++  function getOwner() returns (address out) {
++    return owner;
++  }
++}
++
++contract Math is Assertive {
++  function safeMul(uint a, uint b) internal returns (uint) {
++    uint c = a * b;
++    assert(a == 0 || c / a == b);
++    return c;
++  }
++
++  function safeSub(uint a, uint b) internal returns (uint) {
++    assert(b <= a);
++    return a - b;
++  }
++
++  function safeAdd(uint a, uint b) internal returns (uint) {
++    uint c = a + b;
++    assert(c>=a && c>=b);
++    return c;
++  }
++}
++
++contract ExchangeWhitelist is Math, Owned {
++
++  mapping (address => mapping (address => uint256)) public tokens; //mapping of token addresses to mapping of account balances
++
++  struct Account {
++    bool authorized;
++    uint256 tier;
++    uint256 resetWithdrawal;
++    uint256 withdrawn;
++  }
++
++  mapping (address => Account) public accounts;
++  mapping (address => bool) public whitelistAdmins;
++  mapping (address => bool) public admins;
++  //ether balances are held in the token=0 account
++  mapping (bytes32 => uint256) public orderFills;
++  address public feeAccount;
++  address public dvipAddress;
++  address public feeMakeExporter;
++  address public feeTakeExporter;
++  event Order(address tokenBuy, uint256 amountBuy, address tokenSell, uint256 amountSell, uint256 expires, uint256 nonce, address user, uint8 v, bytes32 r, bytes32 s);
++  event Cancel(address tokenBuy, uint256 amountBuy, address tokenSell, uint256 amountSell, uint256 expires, uint256 nonce, address user, uint8 v, bytes32 r, bytes32 s);
++  event Trade(address tokenBuy, uint256 amountBuy, address tokenSell, uint256 amountSell, address get, address give, bytes32 hash);
++  event Deposit(address token, address user, uint256 amount, uint256 balance);
++  event Withdraw(address token, address user, uint256 amount, uint256 balance);
++
++  function ExchangeWhitelist(address feeAccount_, address dvipAddress_) {
++    feeAccount = feeAccount_;
++    dvipAddress = dvipAddress_;
++    feeMakeExporter = 0x00000000000000000000000000000000000000f7;
++    feeTakeExporter = 0x00000000000000000000000000000000000000f8;
++  }
++
++  function setFeeAccount(address feeAccount_) onlyOwner {
++    feeAccount = feeAccount_;
++  }
++
++  function setDVIP(address dvipAddress_) onlyOwner {
++    dvipAddress = dvipAddress_;
++  }
++
++  function setAdmin(address admin, bool isAdmin) onlyOwner {
++    admins[admin] = isAdmin;
++  }
++
++  function setWhitelister(address whitelister, bool isWhitelister) onlyOwner {
++    whitelistAdmins[whitelister] = isWhitelister;
++  }
++
++  modifier onlyWhitelister {
++    if (!whitelistAdmins[msg.sender]) throw;
++    _;
++  }
++
++  modifier onlyAdmin {
++    if (msg.sender != owner && !admins[msg.sender]) throw;
++    _;
++  }
++  function setWhitelisted(address target, bool isWhitelisted) onlyWhitelister {
++    accounts[target].authorized = isWhitelisted;
++  }
++  modifier onlyWhitelisted {
++    if (!accounts[msg.sender].authorized) throw;
++    _;
++  }
++
++  function() {
++    throw;
++  }
++
++  function deposit(address token, uint256 amount) payable {
++    if (token == address(0)) {
++      tokens[address(0)][msg.sender] = safeAdd(tokens[address(0)][msg.sender], msg.value);
++    } else {
++      if (msg.value != 0) throw;
++      tokens[token][msg.sender] = safeAdd(tokens[token][msg.sender], amount);
++      if (!Token(token).transferFrom(msg.sender, this, amount)) throw;
+     }
+-
+-    function safeSubtract(uint256 x, uint256 y) internal returns(uint256) {
+-        assert(x >= y);
+-        uint256 z = x - y;
+-        return z;
++    Deposit(token, msg.sender, amount, tokens[token][msg.sender]);
++  }
++
++  function withdraw(address token, uint256 amount) {
++    if (tokens[token][msg.sender] < amount) throw;
++    tokens[token][msg.sender] = safeSub(tokens[token][msg.sender], amount);
++    if (token == address(0)) {
++      if (!msg.sender.send(amount)) throw;
++    } else {
++      if (!Token(token).transfer(msg.sender, amount)) throw;
+     }
+-
+-    function safeMult(uint256 x, uint256 y) internal returns(uint256) {
+-        uint256 z = x * y;
+-        assert((x == 0)||(z/x == y));
+-        return z;
+-    }
+-}
+-
+-// Random is a block hash based random number generator.
+-contract Random {
+-    // Generates a random number from 0 to max based on the last block hash.
+-    function getRand(uint blockNumber, uint max) constant internal returns(uint) {
+-        return(uint(sha3(block.blockhash(blockNumber))) % max);
+-    }
+-}
+-
+-// Manages contract ownership.
+-contract Owned {
+-    address public owner;
+-    function owned() {
+-        owner = msg.sender;
+-    }
+-    modifier onlyOwner {
+-        if (msg.sender != owner) throw;
+-        _;
+-    }
+-    function transferOwnership(address newOwner) onlyOwner {
+-        owner = newOwner;
+-    }
+-}
+-
+-// DoubleOrNothing is the main public interface for gambling.
+-// To gamble:
+-//   Step 1: Send up to maxWagerEth ETH to this contract address.
+-//   Step 2: Wait waitTimeBlocks.
+-//   Step 3: Call payout() to receive your payment, if any.
+-contract DoubleOrNothing {
+-    // maxWagerWei is the maximum wager in Wei.
+-    uint256 public maxWagerWei;
+-    
+-    // waitTime is the number of blocks before payout is available.
+-    uint public waitTimeBlocks;
+-    
+-    // payoutOdds is the value / 10000 that a payee will win a wager.
+-    // eg. payoutOdds of 4950 implies a 49.5% chance of winning.
+-    uint public payoutOdds;
+-    
+-    // Wager represents one wager.
+-    struct Wager {
+-        address sender;
+-        uint256 wagerWei;
+-        uint256 creationBlockNumber;
+-        bool active;
+-    }
+-    
+-    // wagers contains all current outstanding wagers.
+-    // TODO: Support multiple Wagers per address.
+-    mapping (address => Wager) wagers;
+-    
+-    function makeWager() payable public;
+-    function payout() public;
+-}
+-
+-contract DoubleOrNothingImpl is DoubleOrNothing, Owned, Random, SafeMath {
+-    
+-    // Initialize state by assigning the owner to the contract deployer.
+-    function DoubleOrNothingImpl() {
+-        owner = msg.sender;
+-        maxWagerWei = 100000000000000000;
+-        waitTimeBlocks = 2;
+-        payoutOdds = 4950;
+-    }
+-    
+-    // Allow the owner to set maxWagerWei.
+-    function setMaxWagerWei(uint256 maxWager) public onlyOwner {
+-        maxWagerWei = maxWager;
+-    }
+-    
+-    // Allow the owner to set waitTimeBlocks.
+-    function setWaitTimeBlocks(uint waitTime) public onlyOwner {
+-        waitTimeBlocks = waitTime;
+-    }
+-    
+-    // Allow the owner to set payoutOdds.
+-    function setPayoutOdds(uint odds) public onlyOwner {
+-        payoutOdds = odds;
+-    }
+-    
+-    // Allow the owner to cash out the holdings of this contract.
+-    function withdraw(address recipient, uint256 balance) public onlyOwner {
+-        recipient.transfer(balance);
+-    }
+-    
+-    // Allow the owner to payout outstanding wagers on others' behalf.
+-    function ownerPayout(address wager_owner) public onlyOwner {
+-        _payout(wager_owner);
+-    }
+-    
+-    // Assume that simple transactions are trying to make a wager, unless it is
+-    // from the owner.
+-    function () payable public {
+-        if (msg.sender != owner) {
+-            makeWager();
+-        }
+-    }
+-    
+-    // Make a wager.
+-    function makeWager() payable public {
+-        if (msg.value == 0 || msg.value > maxWagerWei) throw;
+-        if (wagers[msg.sender].active) {
+-            // A Wager already exists for this user.
+-            throw;
+-        }
+-        wagers[msg.sender] = Wager({
+-            sender: msg.sender,
+-            wagerWei: msg.value,
+-            creationBlockNumber: block.number,
+-            active: true,
+-        });
+-    }
+-    
+-    // View your wager.
+-    function getMyWager() constant public returns (
+-        uint256 wagerWei,
+-        uint creationBlockNumber,
+-        bool active) {
+-        return getWager(msg.sender);
+-    }
+-    
+-    // View the wager for a given address.
+-    function getWager(address wager_owner) constant public returns (
+-        uint256 wagerWei,
+-        uint creationBlockNumber,
+-        bool active) {
+-        Wager thisWager = wagers[wager_owner];
+-        return (thisWager.wagerWei, thisWager.creationBlockNumber, thisWager.active);
+-    }
+-    
+-    // Payout any wagers associated with the sending address.
+-    function payout() public {
+-        _payout(msg.sender);
+-    }
+-    
+-    // Internal implementation of payout().
+-    function _payout(address wager_owner) internal {
+-        if (!wagers[wager_owner].active) {
+-            // No outstanding active Wager.
+-            throw;
+-        }
+-        uint256 blockDepth = block.number - wagers[wager_owner].creationBlockNumber;
+-        if (blockDepth > waitTimeBlocks) {
+-            // waitTimeBlocks has passed, resolve and payout this wager.
+-            uint256 payoutBlock = wagers[wager_owner].creationBlockNumber + waitTimeBlocks - 1;
+-            uint randNum = getRand(payoutBlock, 10000);
+-            if (randNum < payoutOdds) {
+-                // Wager wins, payout wager.
+-                uint256 winnings = safeMult(wagers[wager_owner].wagerWei, 2);
+-                if (wagers[wager_owner].sender.send(winnings)) {
+-                    wagers[wager_owner].active = false;
+-                }
+-            } else {
+-                // Wager loses, disable wager.
+-                wagers[wager_owner].active = false;
+-            }
+-        }
+-    }
++    Withdraw(token, msg.sender, amount, tokens[token][msg.sender]);
++  }
++
++  function balanceOf(address token, address user) constant returns (uint256) {
++    return tokens[token][user];
++  }
++
++  uint256 internal feeTake;
++  uint256 internal feeMake;
++  uint256 internal feeTerm;
++  bytes32 internal tradeHash;
++
++  function trade(address tokenBuy, uint256 amountBuy, address tokenSell, uint256 amountSell, uint256 expires, uint256 nonce, address user, uint8 v, bytes32 r, bytes32 s, uint256 amount) onlyWhitelisted {
++    //amount is in amountBuy terms
++    tradeHash = sha3(this, tokenBuy, amountBuy, tokenSell, amountSell, expires, nonce, user);
++    if (!(
++      ecrecover(sha3("\x19Ethereum Signed Message:\n32", tradeHash),v,r,s) == user &&
++      block.number <= expires &&
++      safeAdd(orderFills[tradeHash], amount) <= amountBuy &&
++      tokens[tokenBuy][msg.sender] >= amount &&
++      tokens[tokenSell][user] >= safeMul(amountSell, amount) / amountBuy
++    )) throw;
++    feeMake = DVIP(dvipAddress).feeFor(feeMakeExporter, msg.sender, 1 ether);
++    feeTake = DVIP(dvipAddress).feeFor(feeTakeExporter, user, 1 ether);
++    tokens[tokenBuy][msg.sender] = safeSub(tokens[tokenBuy][msg.sender], amount);
++    feeTerm = safeMul(amount, ((1 ether) - feeMake)) / (1 ether);
++    tokens[tokenBuy][user] = safeAdd(tokens[tokenBuy][user], feeTerm);
++    feeTerm = safeMul(amount, feeMake) / (1 ether);
++    tokens[tokenBuy][feeAccount] = safeAdd(tokens[tokenBuy][feeAccount], feeTerm);
++    feeTerm = safeMul(amountSell, amount) / amountBuy;
++    tokens[tokenSell][user] = safeSub(tokens[tokenSell][user], feeTerm);
++    feeTerm = safeMul(safeMul(((1 ether) - feeTake), amountSell), amount) / amountBuy / (1 ether);
++    tokens[tokenSell][msg.sender] = safeAdd(tokens[tokenSell][msg.sender], feeTerm);
++    feeTerm = safeMul(safeMul(feeTake, amountSell), amount) / amountBuy / (1 ether);
++    tokens[tokenSell][feeAccount] = safeAdd(tokens[tokenSell][feeAccount], feeTerm);
++    orderFills[tradeHash] = safeAdd(orderFills[tradeHash], amount);
++    Trade(tokenBuy, amount, tokenSell, amountSell * amount / amountBuy, user, msg.sender, tradeHash);
++  }
++
++  bytes32 internal testHash;
++  uint256 internal amountSelln;
++
++  function testTrade(address tokenBuy, uint256 amountBuy, address tokenSell, uint256 amountSell, uint256 expires, uint256 nonce, address user, uint8 v, bytes32 r, bytes32 s, uint256 amount, address sender) constant returns (uint8 code) {
++    testHash = sha3(this, tokenBuy, amountBuy, tokenSell, amountSell, expires, nonce, user);
++    if (tokens[tokenBuy][sender] < amount) return 1;
++    if (!accounts[sender].authorized) return 2; 
++    if (!accounts[user].authorized) return 3;
++    if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", testHash), v, r, s) != user) return 4;
++    amountSelln = safeMul(amountSell, amount) / amountBuy;
++    if (tokens[tokenSell][user] < amountSelln) return 5;
++    if (block.number > expires) return 6;
++    if (safeAdd(orderFills[testHash], amount) > amountBuy) return 7;
++    return 0;
++  }
++  function cancelOrder(address tokenBuy, uint256 amountBuy, address tokenSell, uint256 amountSell, uint256 expires, uint256 nonce, uint8 v, bytes32 r, bytes32 s, address user) {
++    bytes32 hash = sha3(this, tokenBuy, amountBuy, tokenSell, amountSell, expires, nonce, user);
++    if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash),v,r,s) != msg.sender) throw;
++    orderFills[hash] = amountBuy;
++    Cancel(tokenBuy, amountBuy, tokenSell, amountSell, expires, nonce, msg.sender, v, r, s);
++  }
+ }

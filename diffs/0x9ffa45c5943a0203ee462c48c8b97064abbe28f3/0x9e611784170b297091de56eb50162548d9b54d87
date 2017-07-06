@@ -1,0 +1,69 @@
+--- 
++++ 
+@@ -1,16 +1,13 @@
+-/**
+-*	This investment contract accepts investments, which will be sent to the Edgeless ICO contract as soon as it starts buy calling buyTokens().
+-*     This way investors do not have to buy tokens in time theirselves and still do profit from the power hour offer.
+-*	Investors may withdraw their funds anytime if they change their mind as long as the tokens have not yet been purchased.
+-*	Author: Julia Altenried
+-**/
+-
+ pragma solidity ^0.4.8;
+ 
+ contract Crowdsale {
+ 	function invest(address receiver) payable{}
+ }
+-
++/**
++*	This contract accepts investments, which can be sent to the specified ICO contract buy calling buyTokens().
++*	Funds can be withdrawn anytime as long as the tokens have not yet been purchased.
++*	Author: Julia Altenried
++**/
+ contract Investment{
+ 	Crowdsale public ico;
+ 	address[] public investors;
+@@ -19,7 +16,7 @@
+ 
+ 	/** constructs an investment contract for an ICO contract **/
+ 	function Investment(){
+-		ico = Crowdsale(0x0807a2d6a675e7196a3d9b1910700cae9795b72a);
++		ico = Crowdsale(0x7be89db09b0c1023fd0407b24b98810ae97f61c1);
+ 	}
+ 
+ 	/** make an investment **/
+@@ -30,7 +27,7 @@
+ 		balanceOf[msg.sender] += msg.value;
+ 	}
+ 
+-	/** checks if the address already invested **/
++	/** checks if the address invested **/
+ 	function isInvestor(address who) returns (bool){
+ 		for(uint i = 0; i< investors.length; i++)
+ 			if(investors[i] == who)
+@@ -38,9 +35,7 @@
+ 		return false;
+ 	}
+ 
+-	/** buys tokens in behalf of the investors by calling the ico contract
+-	*   starting with the investor at index from and ending with investor at index to.
+-	*   This function will be called as soon as the ICO starts and as often as necessary, until all investments were made. **/
++	/** buys token in behalf of the investors **/
+ 	function buyTokens(uint from, uint to){
+ 		uint amount;
+ 		if(to>investors.length)
+@@ -54,13 +49,12 @@
+ 		}
+ 	}
+ 
+-	/** In case an investor wants to retrieve his or her funds he or she can call this function.
+-	*   (only possible before tokens are bought) **/
++	/** In case an investor wants to retrieve his or her funds (only possible before tokens are bought). **/
+ 	function withdraw(){
+ 		msg.sender.send(balanceOf[msg.sender]);
+ 	}
+ 
+-	/** returns the number of investors **/
++	/** returns the number of investors**/
+ 	function getNumInvestors() constant returns(uint){
+ 		return investors.length;
+ 	}

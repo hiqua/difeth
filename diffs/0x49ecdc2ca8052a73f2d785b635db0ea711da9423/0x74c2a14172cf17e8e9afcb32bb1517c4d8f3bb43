@@ -1,0 +1,38 @@
+--- 
++++ 
+@@ -146,9 +146,7 @@
+     // This method was called buy() in the old version
+     function takerBuyAsset() payable {
+         if (sellsTokens || msg.sender == owner) {
+-            // Note that sellPrice has already been validated as > 0
+             uint order    = msg.value / sellPrice;
+-            // Note that units has already been validated as > 0
+             uint can_sell = ERC20Partial(asset).balanceOf(address(this)) / units;
+             uint256 change = 0;
+             if (order > can_sell) {
+@@ -174,9 +172,9 @@
+ // This contract deploys TokenSeller contracts and logs the event
+ contract TokenSellerFactory is Owned {
+ 
+-    event TradeListing(address indexed ownerAddress, address indexed tokenSellerAddress,
+-        address indexed asset, uint256 sellPrice, uint256 units, bool sellsTokens);
+-    event OwnerWithdrewERC20Token(address indexed tokenAddress, uint256 tokens);
++    event TradeListing(address ownerAddress, address tokenSellerAddress, address asset,
++        uint256 sellPrice, uint256 units, bool sellsTokens);
++    event OwnerWithdrewERC20Token(address tokenAddress, uint256 tokens);
+ 
+     mapping(address => bool) _verify;
+ 
+@@ -244,10 +242,8 @@
+         uint256 units,
+         bool    sellsTokens
+     ) returns (address seller) {
+-        // Cannot have invalid asset
+-        if (asset == 0x0) throw;
+-        // Cannot set zero or negative price
+-        if (sellPrice <= 0) throw;
++        // Cannot set negative price
++        if (sellPrice < 0) throw;
+         // Cannot sell zero or negative units
+         if (units <= 0) throw;
+         seller = new TokenSeller(

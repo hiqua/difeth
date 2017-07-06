@@ -1,0 +1,278 @@
+--- 
++++ 
+@@ -23,7 +23,7 @@
+ 
+   function plus(uint a, uint b) returns (uint) {
+     uint c = a + b;
+-    assert(c>=a && c>=b);
++    assert(c>=a);
+     return c;
+   }
+ 
+@@ -128,7 +128,7 @@
+    * @param decimals - how many decimal units the token has
+    * @return Amount of tokens the investor receives
+    */
+-  function calculatePrice(uint value, uint tokensSold, uint weiRaised, address msgSender, uint decimals) public constant returns (uint tokenAmount);
++  function calculatePrice(uint value, uint weiRaised, uint tokensSold, address msgSender, uint decimals) public constant returns (uint tokenAmount);
+ }
+ 
+ 
+@@ -201,6 +201,9 @@
+  *
+  */
+ contract Crowdsale is Haltable {
++
++  /* Max investment count when we are still allowed to change the multisig address */
++  uint public MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE = 5;
+ 
+   using SafeMathLib for uint;
+ 
+@@ -383,7 +386,7 @@
+     tokensSold = tokensSold.plus(tokenAmount);
+ 
+     // Check that we did not bust the cap
+-    if(isBreakingCap(tokenAmount, weiAmount, weiRaised, tokensSold)) {
++    if(isBreakingCap(weiAmount, tokenAmount, weiRaised, tokensSold)) {
+       throw;
+     }
+ 
+@@ -414,7 +417,7 @@
+   function preallocate(address receiver, uint fullTokens, uint weiPrice) public onlyOwner {
+ 
+     uint tokenAmount = fullTokens * 10**token.decimals();
+-    uint weiAmount = weiPrice * tokenAmount; // This can be also 0, we give out tokens for free
++    uint weiAmount = weiPrice * fullTokens; // This can be also 0, we give out tokens for free
+ 
+     weiRaised = weiRaised.plus(weiAmount);
+     tokensSold = tokensSold.plus(tokenAmount);
+@@ -578,6 +581,23 @@
+     if(!pricingStrategy.isPricingStrategy()) {
+       throw;
+     }
++  }
++
++  /**
++   * Allow to change the team multisig address in the case of emergency.
++   *
++   * This allows to save a deployed crowdsale wallet in the case the crowdsale has not yet begun
++   * (we have done only few test transactions). After the crowdsale is going
++   * then multisig address stays locked for the safety reasons.
++   */
++  function setMultisig(address addr) public onlyOwner {
++
++    // Change
++    if(investorCount > MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE) {
++      throw;
++    }
++
++    multisigWallet = addr;
+   }
+ 
+   /**
+@@ -607,6 +627,20 @@
+    */
+   function isMinimumGoalReached() public constant returns (bool reached) {
+     return weiRaised >= minimumFundingGoal;
++  }
++
++  /**
++   * Check if the contract relationship looks good.
++   */
++  function isFinalizerSane() public constant returns (bool sane) {
++    return finalizeAgent.isSane();
++  }
++
++  /**
++   * Check if the contract relationship looks good.
++   */
++  function isPricingSane() public constant returns (bool sane) {
++    return pricingStrategy.isSane(address(this));
+   }
+ 
+   /**
+@@ -631,6 +665,11 @@
+     ownerTestValue = val;
+   }
+ 
++  /** Interface marker. */
++  function isCrowdsale() public constant returns (bool) {
++    return true;
++  }
++
+   //
+   // Modifiers
+   //
+@@ -741,7 +780,13 @@
+  */
+ contract StandardToken is ERC20, SafeMath {
+ 
++  /* Token supply got increased and a new owner received these tokens */
++  event Minted(address receiver, uint amount);
++
++  /* Actual balances of token holders */
+   mapping(address => uint) balances;
++
++  /* approve() allowances */
+   mapping (address => mapping (address => uint)) allowed;
+ 
+   /**
+@@ -751,7 +796,7 @@
+    * http://vessenes.com/the-erc20-short-address-attack-explained/
+    */
+   modifier onlyPayloadSize(uint size) {
+-     if(msg.data.length < size + 4) {
++     if(msg.data.length != size + 4) {
+        throw;
+      }
+      _;
+@@ -765,7 +810,7 @@
+   }
+ 
+   function transferFrom(address _from, address _to, uint _value) returns (bool success) {
+-    var _allowance = allowed[_from][msg.sender];
++    uint _allowance = allowed[_from][msg.sender];
+ 
+     // Check is not needed because safeSub(_allowance, _value) will already throw if this condition is not met
+     // if (_value > _allowance) throw;
+@@ -798,6 +843,41 @@
+     return allowed[_owner][_spender];
+   }
+ 
++  /**
++   * Atomic increment of approved spending
++   *
++   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
++   *
++   */
++  function addApproval(address _spender, uint _addedValue)
++  onlyPayloadSize(2 * 32)
++  returns (bool success) {
++      uint oldValue = allowed[msg.sender][_spender];
++      allowed[msg.sender][_spender] = safeAdd(oldValue, _addedValue);
++      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
++      return true;
++  }
++
++  /**
++   * Atomic decrement of approved spending.
++   *
++   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
++   */
++  function subApproval(address _spender, uint _subtractedValue)
++  onlyPayloadSize(2 * 32)
++  returns (bool success) {
++
++      uint oldVal = allowed[msg.sender][_spender];
++
++      if (_subtractedValue > oldVal) {
++          allowed[msg.sender][_spender] = 0;
++      } else {
++          allowed[msg.sender][_spender] = safeSub(oldVal, _subtractedValue);
++      }
++      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
++      return true;
++  }
++
+ }
+ 
+ 
+@@ -1060,6 +1140,8 @@
+   /** List of agents that are allowed to create new tokens */
+   mapping (address => bool) public mintAgents;
+ 
++  event MintingAgentChanged(address addr, bool state  );
++
+   /**
+    * Create new tokens and allocate them to an address..
+    *
+@@ -1068,6 +1150,9 @@
+   function mint(address receiver, uint amount) onlyMintAgent canMint public {
+     totalSupply = totalSupply.plus(amount);
+     balances[receiver] = balances[receiver].plus(amount);
++
++    // This will make the mint transaction apper in EtherScan.io
++    // We can remove this after there is a standardized minting event
+     Transfer(0, receiver, amount);
+   }
+ 
+@@ -1076,6 +1161,7 @@
+    */
+   function setMintAgent(address addr, bool state) onlyOwner canMint public {
+     mintAgents[addr] = state;
++    MintingAgentChanged(addr, state);
+   }
+ 
+   modifier onlyMintAgent() {
+@@ -1095,7 +1181,6 @@
+ 
+ 
+ 
+-
+ /**
+  * A crowdsaled token.
+  *
+@@ -1109,6 +1194,8 @@
+  */
+ contract CrowdsaleToken is ReleasableToken, MintableToken, UpgradeableToken {
+ 
++  event UpdatedTokenInformation(string newName, string newSymbol);
++
+   string public name;
+ 
+   string public symbol;
+@@ -1119,8 +1206,14 @@
+    * Construct the token.
+    *
+    * This token must be created through a team multisig wallet, so that it is owned by that wallet.
+-   */
+-  function CrowdsaleToken(string _name, string _symbol, uint _initialSupply, uint _decimals)
++   *
++   * @param _name Token name
++   * @param _symbol Token symbol - should be all caps
++   * @param _initialSupply How many tokens we start with
++   * @param _decimals Number of decimal places
++   * @param _mintable Are new tokens created over the crowdsale or do we distribute only the initial supply? Note that when the token becomes transferable the minting always ends.
++   */
++  function CrowdsaleToken(string _name, string _symbol, uint _initialSupply, uint _decimals, bool _mintable)
+     UpgradeableToken(msg.sender) {
+ 
+     // Create any address, can be transferred
+@@ -1137,6 +1230,18 @@
+ 
+     // Create initially all balance on the team multisig
+     balances[owner] = totalSupply;
++
++    if(totalSupply > 0) {
++      Minted(owner, totalSupply);
++    }
++
++    // No more new supply allowed after the token creation
++    if(!_mintable) {
++      mintingFinished = true;
++      if(totalSupply == 0) {
++        throw; // Cannot create a token without supply and no minting
++      }
++    }
+   }
+ 
+   /**
+@@ -1151,7 +1256,17 @@
+    * Allow upgrade agent functionality kick in only if the crowdsale was success.
+    */
+   function canUpgrade() public constant returns(bool) {
+-    return released;
++    return released && super.canUpgrade();
++  }
++
++  /**
++   * Owner can update token information here
++   */
++  function setTokenInformation(string _name, string _symbol) onlyOwner {
++    name = _name;
++    symbol = _symbol;
++
++    UpdatedTokenInformation(name, symbol);
+   }
+ 
+ }

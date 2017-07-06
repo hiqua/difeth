@@ -1,0 +1,189 @@
+--- 
++++ 
+@@ -1,92 +1,119 @@
+ pragma solidity ^0.4.8;
+ 
+-/// @title ERC20 Token
+-/// @author Melonport AG <team@melonport.com>
+-/// @notice Original taken from https://github.com/ethereum/EIPs/issues/20
+-/// @notice Checked against integer overflow
+-contract ERC20 {
++contract IProxy{
++	function raiseTransferEvent(address _from, address _to, uint256 _value) returns (bool success) {}
++	function raiseApprovalEvent(address _owner, address _spender, uint256 _value) returns (bool success){}
++}
+ 
+-    function transfer(address _to, uint256 _value) returns (bool success) {
+-        if (balances[msg.sender] >= _value && balances[_to] + _value > balances[_to]) {
+-            balances[msg.sender] -= _value;
+-            balances[_to] += _value;
+-            Transfer(msg.sender, _to, _value);
+-            return true;
+-        } else { return false; }
++contract ProxyManagementContract{
++
++  
++    address public dev;
++    address public curator;
++    address public tokenAddress;
++
++    address[] public proxyList; 
++
++    mapping (address => bool) approvedProxies;
++    IProxy dedicatedProxy;
++
++
++    function ProxyManagementContract(){
++        dev = msg.sender;
+     }
+ 
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+-        if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && balances[_to] + _value > balances[_to]) {
+-            balances[_to] += _value;
+-            balances[_from] -= _value;
+-            allowed[_from][msg.sender] -= _value;
+-            Transfer(_from, _to, _value);
+-            return true;
+-        } else { return false; }
++    function addProxy(address _proxyAdress) returns (uint error){
++        if(msg.sender != curator){ return 1;}
++        
++        approvedProxies[_proxyAdress] = true;
++        proxyList.push(_proxyAdress);
++        return 0;
+     }
+ 
+-    function balanceOf(address _owner) constant returns (uint256 balance) {
+-        return balances[_owner];
++    function removeProxy(address _proxyAddress) returns (uint error){
++        if(msg.sender != curator){ return 1; }
++        if (!approvedProxies[_proxyAddress]) { return 55; }
++        
++        uint temAddressArrayLength = proxyList.length - 1;
++        uint newArrayCnt = 0;
++        address[] memory tempAddressArray = new address[](temAddressArrayLength);
++        
++        for (uint cnt = 0; cnt < proxyList.length; cnt++){
++            if (_proxyAddress == proxyList[cnt]){
++                approvedProxies[_proxyAddress] = false;
++            }
++            else{
++                tempAddressArray[newArrayCnt] = proxyList[cnt];
++                newArrayCnt += 1;
++            }
++        }
++        proxyList = tempAddressArray;
++        return 0;
+     }
+ 
+-    function approve(address _spender, uint256 _value) returns (bool success) {
+-        allowed[msg.sender][_spender] = _value;
+-        Approval(msg.sender, _spender, _value);
+-        return true;
++    function changeDedicatedProxy(address _contractAddress) returns (uint error){
++        if(msg.sender != curator){ return 1;}
++        
++        dedicatedProxy = IProxy(_contractAddress);
++        return 0;
+     }
+ 
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
+-        return allowed[_owner][_spender];
++    function raiseTransferEvent(address _from, address _to, uint256 _value) returns (uint error){
++        if (msg.sender != tokenAddress) { return 1; }
++        
++        dedicatedProxy.raiseTransferEvent(_from, _to, _value);
++        return 0;
+     }
+ 
+-    mapping (address => uint256) balances;
++    function raiseApprovalEvent(address _owner, address _spender, uint256 _value) returns (uint error){
++        if (msg.sender == tokenAddress) { return 1; }
+ 
+-    mapping (address => mapping (address => uint256)) allowed;
+-
+-    uint256 public totalSupply;
+-
+-    address public owner;
+-
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-
+-    modifier onlyowner(address _requester) {
+-        if (_requester != owner) {
+-            throw;
+-        }
+-        _;
++        dedicatedProxy.raiseApprovalEvent(_owner, _spender, _value);
++        return 0;
+     }
+ 
+-    event Mint(address indexed _owner, uint256 _value, uint256 _totalSupply);
+-    event Burn(address indexed _owner, uint256 _value, uint256 _totalSupply);
+-    event ChangeOwner(address indexed _oldOwner, address indexed _newOwner);
+-
+-    function ERC20() {
+-        owner = msg.sender;
++    function setProxyManagementCurator(address _curatorAdress) returns (uint error){
++        if (msg.sender != dev){ return 1; }
++              
++        curator = _curatorAdress;
++        return 0;
+     }
+ 
+-    function mint(uint _value) onlyowner(msg.sender) {
+-        if (balances[owner] + _value < balances[owner]) {
+-            // overflow
+-            throw;
+-        }
+-        balances[owner] += _value;
+-        totalSupply += _value;
+-        Mint(owner, _value, totalSupply);
++    function setDedicatedProxy(address _contractAddress) returns (uint error){
++        if (msg.sender != curator){ return 1; }
++              
++        dedicatedProxy = IProxy(_contractAddress);
++        return 0;
+     }
+ 
+-    function burn(uint _value) onlyowner(msg.sender) {
+-        if (balances[owner] < _value) {
+-            throw;
+-        }
+-        balances[owner] -= _value;
+-        totalSupply -= _value;
+-        Burn(owner, _value, totalSupply);
++    function setTokenAddress(address _contractAddress) returns (uint error){
++        if (msg.sender != curator){ return 1; }
++        
++        tokenAddress = _contractAddress;
++        return 0;
+     }
+ 
+-    function changeOwner(address _owner) onlyowner(msg.sender) {
+-        owner = _owner;
+-        ChangeOwner(msg.sender, owner);
++    function killContract() returns (uint error){
++        if (msg.sender != dev){ return 1; }
++
++        selfdestruct(dev);
++        return 0;
+     }
+ 
++    function dedicatedProxyAddress() constant returns (address contractAddress){
++        return address(dedicatedProxy);
++    }
++
++    function getApprovedProxies() constant returns (address[] proxies){
++        return proxyList;
++    }
++
++    function isProxyLegit(address _proxyAddress) constant returns (bool isLegit){
++        if (_proxyAddress == address(dedicatedProxy)){ return true; }
++        return approvedProxies[_proxyAddress];
++    }
++
++    function () {
++        throw;
++    }
+ }

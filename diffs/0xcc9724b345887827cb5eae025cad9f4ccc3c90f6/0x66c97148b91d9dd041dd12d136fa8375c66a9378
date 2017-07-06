@@ -1,0 +1,38 @@
+--- 
++++ 
+@@ -1,6 +1,6 @@
+ // King of the Ether Throne Contracts.
+ // Copyright (c) 2016 Kieran Elby. Released under the MIT License.
+-// Version 0.9.9.2, July 2016.
++// Version 1.0.0, 31 July 2016.
+ //
+ // See also http://www.kingoftheether.com and
+ // https://github.com/kieranelby/KingOfTheEtherThrone .
+@@ -822,7 +822,7 @@
+         // I suppose there is a danger that massive deflation/inflation could
+         // change the real-world sanity of these checks, but in that case we
+         // can deploy a new factory and update the world.
+-        if (_startingClaimPriceWei < 1 finney ||
++        if (_startingClaimPriceWei < 10 finney ||
+             _startingClaimPriceWei > 100 ether) {
+             return false;
+         }
+@@ -833,7 +833,7 @@
+         if (_startingClaimPriceWei * 20 > _maximumClaimPriceWei) {
+             return false;
+         }
+-        if (_claimPriceAdjustPercent < 1 ||
++        if (_claimPriceAdjustPercent < 10 ||
+             _claimPriceAdjustPercent > 900) {
+             return false;
+         }
+@@ -1199,6 +1199,9 @@
+         if (msg.sender != topWizard) {
+             throw;
+         }
++        if (msg.value != 0) {
++            throw;
++        }
+         if (_maximumClaimPriceWei < 1 ether) {
+             throw;
+         }

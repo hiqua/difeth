@@ -1,0 +1,11 @@
+--- 
++++ 
+@@ -275,7 +275,7 @@
+             return true;
+         }
+         return false;*/
+-        return true; //Villetest
++        return false;
+     }
+     // determines today's index.
+     function today() private constant returns (uint) { return now / 1 days; }

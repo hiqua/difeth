@@ -1,0 +1,132 @@
+--- 
++++ 
+@@ -1,4 +1,49 @@
+ pragma solidity ^0.4.11;
++
++
++
++
++/**
++ * @title Ownable
++ * @dev The Ownable contract has an owner address, and provides basic authorization control 
++ * functions, this simplifies the implementation of "user permissions". 
++ */
++contract Ownable {
++  address public owner;
++
++
++  /** 
++   * @dev The Ownable constructor sets the original `owner` of the contract to the sender
++   * account.
++   */
++  function Ownable() {
++    owner = msg.sender;
++  }
++
++
++  /**
++   * @dev Throws if called by any account other than the owner. 
++   */
++  modifier onlyOwner() {
++    if (msg.sender != owner) {
++      throw;
++    }
++    _;
++  }
++
++
++  /**
++   * @dev Allows the current owner to transfer control of the contract to a newOwner.
++   * @param newOwner The address to transfer ownership to. 
++   */
++  function transferOwnership(address newOwner) onlyOwner {
++    if (newOwner != address(0)) {
++      owner = newOwner;
++    }
++  }
++
++}
++
+ 
+ /**
+  * Math operations with safety checks
+@@ -51,6 +96,7 @@
+   }
+ }
+ 
++
+ /**
+  * @title ERC20Basic
+  * @dev Simpler version of ERC20 interface
+@@ -63,10 +109,6 @@
+   event Transfer(address indexed from, address indexed to, uint value);
+ }
+ 
+-/**
+- * @title ERC20 interface
+- * @dev see https://github.com/ethereum/EIPs/issues/20
+- */
+ contract ERC20 is ERC20Basic {
+   function allowance(address owner, address spender) constant returns (uint);
+   function transferFrom(address from, address to, uint value);
+@@ -76,7 +118,7 @@
+ 
+ /**
+  * @title Basic token
+- * @dev Basic version of StandardToken, with no allowances.
++ * @dev Basic version of StandardToken, with no allowances. 
+  */
+ contract BasicToken is ERC20Basic {
+   using SafeMath for uint;
+@@ -106,7 +148,7 @@
+ 
+   /**
+   * @dev Gets the balance of the specified address.
+-  * @param _owner The address to query the the balance of.
++  * @param _owner The address to query the the balance of. 
+   * @return An uint representing the amount owned by the passed address.
+   */
+   function balanceOf(address _owner) constant returns (uint balance) {
+@@ -174,20 +216,26 @@
+ 
+ }
+ 
+-/**
+- * @title Metal ERC20 token
+- *
+- * @dev Implemantation of the metal token.
+- */
+-contract MetalToken is StandardToken {
+-
+-    string public name = "Metal";
+-    string public symbol = "MTL";
+-    uint public decimals = 8;
+-    uint public INITIAL_SUPPLY = 6658888800000000; // Initial supply is 66,588,888 MTL
+-
+-    function MetalToken() {
+-        totalSupply = INITIAL_SUPPLY;
+-        balances[msg.sender] = INITIAL_SUPPLY;
+-    }
++
++/**
++ * @title SimpleToken
++ * @dev Very simple ERC20 Token example, where all tokens are pre-assigned to the creator.
++ * Note they can later distribute these tokens as they wish using `transfer` and other
++ * `StandardToken` functions.
++ */
++contract RBCToken is StandardToken, Ownable {
++
++  string public name = "RBCToken";
++  string public symbol = "RBC";
++  uint public decimals = 18;
++  uint public INITIAL_SUPPLY = 100000000 * 1000000000000000000;
++
++  /**
++   * @dev Contructor that gives msg.sender all of existing tokens.
++   */
++  function RBCToken() {
++    totalSupply = INITIAL_SUPPLY;
++    balances[msg.sender] = INITIAL_SUPPLY;
++  }
++
+ }

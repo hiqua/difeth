@@ -1,0 +1,161 @@
+--- 
++++ 
+@@ -254,6 +254,9 @@
+  *
+  */
+ contract Crowdsale is Haltable {
++
++  /* Max investment count when we are still allowed to change the multisig address */
++  uint public MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE = 5;
+ 
+   using SafeMathLib for uint;
+ 
+@@ -634,6 +637,23 @@
+   }
+ 
+   /**
++   * Allow to change the team multisig address in the case of emergency.
++   *
++   * This allows to save a deployed crowdsale wallet in the case the crowdsale has not yet begun
++   * (we have done only few test transactions). After the crowdsale is going
++   * then multisig address stays locked for the safety reasons.
++   */
++  function setMultisig(address addr) public onlyOwner {
++
++    // Change
++    if(investorCount > MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE) {
++      throw;
++    }
++
++    multisigWallet = addr;
++  }
++
++  /**
+    * Allow load refunds back on the contract for the refunding.
+    *
+    * The team can transfer the funds back on the smart contract in the case the minimum goal was not reached..
+@@ -769,6 +789,11 @@
+   /* approve() allowances */
+   mapping (address => mapping (address => uint)) allowed;
+ 
++  /* Interface declaration */
++  function isToken() public constant returns (bool weAre) {
++    return true;
++  }
++
+   /**
+    *
+    * Fix for the ERC20 short address attack
+@@ -776,7 +801,7 @@
+    * http://vessenes.com/the-erc20-short-address-attack-explained/
+    */
+   modifier onlyPayloadSize(uint size) {
+-     if(msg.data.length != size + 4) {
++     if(msg.data.length < size + 4) {
+        throw;
+      }
+      _;
+@@ -792,9 +817,6 @@
+   function transferFrom(address _from, address _to, uint _value) returns (bool success) {
+     uint _allowance = allowed[_from][msg.sender];
+ 
+-    // Check is not needed because safeSub(_allowance, _value) will already throw if this condition is not met
+-    // if (_value > _allowance) throw;
+-
+     balances[_to] = safeAdd(balances[_to], _value);
+     balances[_from] = safeSub(balances[_from], _value);
+     allowed[_from][msg.sender] = safeSub(_allowance, _value);
+@@ -821,41 +843,6 @@
+ 
+   function allowance(address _owner, address _spender) constant returns (uint remaining) {
+     return allowed[_owner][_spender];
+-  }
+-
+-  /**
+-   * Atomic increment of approved spending
+-   *
+-   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+-   *
+-   */
+-  function addApproval(address _spender, uint _addedValue)
+-  onlyPayloadSize(2 * 32)
+-  returns (bool success) {
+-      uint oldValue = allowed[msg.sender][_spender];
+-      allowed[msg.sender][_spender] = safeAdd(oldValue, _addedValue);
+-      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
+-      return true;
+-  }
+-
+-  /**
+-   * Atomic decrement of approved spending.
+-   *
+-   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+-   */
+-  function subApproval(address _spender, uint _subtractedValue)
+-  onlyPayloadSize(2 * 32)
+-  returns (bool success) {
+-
+-      uint oldVal = allowed[msg.sender][_spender];
+-
+-      if (_subtractedValue > oldVal) {
+-          allowed[msg.sender][_spender] = 0;
+-      } else {
+-          allowed[msg.sender][_spender] = safeSub(oldVal, _subtractedValue);
+-      }
+-      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
+-      return true;
+   }
+ 
+ }
+@@ -898,6 +885,9 @@
+   /** What is the minimum buy in */
+   uint public weiMinimumLimit;
+ 
++  /** What is the maximum buy in */
++  uint public weiMaximumLimit;
++
+   /** How many weis total we are allowed to collect. */
+   uint public weiCap;
+ 
+@@ -930,7 +920,7 @@
+   /**
+    * Create presale contract where lock up period is given days
+    */
+-  function PreICOProxyBuyer(address _owner, uint _freezeEndsAt, uint _weiMinimumLimit, uint _weiCap) {
++  function PreICOProxyBuyer(address _owner, uint _freezeEndsAt, uint _weiMinimumLimit, uint _weiMaximumLimit, uint _weiCap) {
+ 
+     owner = _owner;
+ 
+@@ -944,7 +934,12 @@
+       throw;
+     }
+ 
++    if(_weiMaximumLimit == 0) {
++      throw;
++    }
++
+     weiMinimumLimit = _weiMinimumLimit;
++    weiMaximumLimit = _weiMaximumLimit;
+     weiCap = _weiCap;
+     freezeEndsAt = _freezeEndsAt;
+   }
+@@ -976,8 +971,8 @@
+ 
+     balances[investor] = safeAdd(balances[investor], msg.value);
+ 
+-    // Need to fulfill minimum limit
+-    if(balances[investor] < weiMinimumLimit) {
++    // Need to satisfy minimum and maximum limits
++    if(balances[investor] < weiMinimumLimit || balances[investor] > weiMaximumLimit) {
+       throw;
+     }
+ 
+@@ -1090,7 +1085,7 @@
+     if(balances[investor] == 0) throw;
+     uint amount = balances[investor];
+     delete balances[investor];
+-    if(!investor.send(amount)) throw;
++    if(!(investor.call.value(amount)())) throw;
+     Refunded(investor, amount);
+   }
+ 

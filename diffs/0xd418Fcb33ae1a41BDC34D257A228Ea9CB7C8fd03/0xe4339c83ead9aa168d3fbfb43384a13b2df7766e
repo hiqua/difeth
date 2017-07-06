@@ -1,0 +1,28 @@
+--- 
++++ 
+@@ -1,9 +1,4 @@
+ pragma solidity ^0.4.11;
+-
+-
+-/*
+-  Author: Victor Mezrin  victor@mezrin.com
+-*/
+ 
+ 
+ /* Interface of the ERC223 token */
+@@ -179,7 +174,6 @@
+         return (length > 0);
+     }
+ }
+-
+ 
+ 
+ // ERC223 token with the ability for the owner to block any account
+@@ -249,7 +243,6 @@
+ }
+ 
+ 
+-
+ contract ABCToken is ERC223Token {
+     // Constructor
+     function ABCToken(

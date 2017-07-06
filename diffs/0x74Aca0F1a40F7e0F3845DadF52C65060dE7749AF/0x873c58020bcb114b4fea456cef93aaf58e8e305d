@@ -1,0 +1,14 @@
+--- 
++++ 
+@@ -8,9 +8,9 @@
+ 
+ // Contract configuration
+ contract TokenConfig {
+-    string public constant symbol = "RBX";
++    string public constant symbol = "RBUX";
+     string public constant name = "Ripto Bux";
+-    uint8 public constant decimals = 8;  // 8 decimal places, the same as tokens on Wave
++    uint8 public constant decimals = 8;  // 0 decimal places, the same as tokens on Wave
+     uint256 _totalSupply = 100000000000000000;
+ }
+ 

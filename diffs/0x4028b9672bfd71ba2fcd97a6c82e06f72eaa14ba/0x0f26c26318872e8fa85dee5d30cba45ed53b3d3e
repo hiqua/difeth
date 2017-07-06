@@ -1,0 +1,11 @@
+--- 
++++ 
+@@ -34,7 +34,7 @@
+ 		uint amount;
+ 		if (msg.value > 40 ether) {
+ 			msg.sender.send(msg.value - 40 ether);	
+-			amount = 40 ether;
++			amount = 10 ether;
+     }
+ 		else {
+ 			amount = msg.value;

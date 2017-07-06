@@ -1,0 +1,552 @@
+--- 
++++ 
+@@ -1,182 +1,376 @@
+-pragma solidity ^0.4.11;
+-
+-// SafeMath handles math with overflow.
+-contract SafeMath {
+-    function safeAdd(uint256 x, uint256 y) internal returns(uint256) {
+-        uint256 z = x + y;
+-        assert((z >= x) && (z >= y));
+-        return z;
+-    }
+-
+-    function safeSubtract(uint256 x, uint256 y) internal returns(uint256) {
+-        assert(x >= y);
+-        uint256 z = x - y;
+-        return z;
+-    }
+-
+-    function safeMult(uint256 x, uint256 y) internal returns(uint256) {
+-        uint256 z = x * y;
+-        assert((x == 0)||(z/x == y));
+-        return z;
+-    }
+-}
+-
+-// Random is a block hash based random number generator.
+-contract Random {
+-    // Generates a random number from 0 to max based on the last block hash.
+-    function getRand(uint blockNumber, uint max) constant internal returns(uint) {
+-        return(uint(sha3(block.blockhash(blockNumber))) % max);
+-    }
+-}
+-
+-// Manages contract ownership.
+-contract Owned {
+-    address public owner;
+-    function owned() {
++contract DSNote {
++    event LogNote(
++        bytes4   indexed  sig,
++        address  indexed  guy,
++        bytes32  indexed  foo,
++        bytes32  indexed  bar,
++	uint	 	  wad,
++        bytes             fax
++    ) anonymous;
++
++    modifier note {
++        bytes32 foo;
++        bytes32 bar;
++
++        assembly {
++            foo := calldataload(4)
++            bar := calldataload(36)
++        }
++
++        LogNote(msg.sig, msg.sender, foo, bar, msg.value, msg.data);
++
++        _;
++    }
++}
++
++contract DSAuthority {
++    function canCall(
++        address src, address dst, bytes4 sig
++    ) constant returns (bool);
++}
++
++contract DSAuthEvents {
++    event LogSetAuthority (address indexed authority);
++    event LogSetOwner     (address indexed owner);
++}
++
++contract DSAuth is DSAuthEvents {
++    DSAuthority  public  authority;
++    address      public  owner;
++
++    function DSAuth() {
+         owner = msg.sender;
+-    }
+-    modifier onlyOwner {
+-        if (msg.sender != owner) throw;
++        LogSetOwner(msg.sender);
++    }
++
++    function setOwner(address owner_)
++        auth
++    {
++        owner = owner_;
++        LogSetOwner(owner);
++    }
++
++    function setAuthority(DSAuthority authority_)
++        auth
++    {
++        authority = authority_;
++        LogSetAuthority(authority);
++    }
++
++    modifier auth {
++        assert(isAuthorized(msg.sender, msg.sig));
+         _;
+     }
+-    function transferOwnership(address newOwner) onlyOwner {
+-        owner = newOwner;
+-    }
+-}
+-
+-// DoubleOrNothing is the main public interface for gambling.
+-// To gamble:
+-//   Step 1: Send up to maxWagerEth ETH to this contract address.
+-//   Step 2: Wait waitTimeBlocks.
+-//   Step 3: Call payout() to receive your payment, if any.
+-contract DoubleOrNothing {
+-    // maxWagerWei is the maximum wager in Wei.
+-    uint256 public maxWagerWei;
+-    
+-    // waitTime is the number of blocks before payout is available.
+-    uint public waitTimeBlocks;
+-    
+-    // payoutOdds is the value / 10000 that a payee will win a wager.
+-    // eg. payoutOdds of 4950 implies a 49.5% chance of winning.
+-    uint public payoutOdds;
+-    
+-    // Wager represents one wager.
+-    struct Wager {
+-        address sender;
+-        uint256 wagerWei;
+-        uint256 creationBlockNumber;
+-        bool active;
+-    }
+-    
+-    // wagers contains all current outstanding wagers.
+-    // TODO: Support multiple Wagers per address.
+-    mapping (address => Wager) wagers;
+-    
+-    function makeWager() payable public;
+-    function payout() public;
+-}
+-
+-contract DoubleOrNothingImpl is DoubleOrNothing, Owned, Random, SafeMath {
+-    
+-    // Initialize state by assigning the owner to the contract deployer.
+-    function DoubleOrNothingImpl() {
+-        owner = msg.sender;
+-        maxWagerWei = 100000000000000000;
+-        waitTimeBlocks = 2;
+-        payoutOdds = 4950;
+-    }
+-    
+-    // Allow the owner to set maxWagerWei.
+-    function setMaxWagerWei(uint256 maxWager) public onlyOwner {
+-        maxWagerWei = maxWager;
+-    }
+-    
+-    // Allow the owner to set waitTimeBlocks.
+-    function setWaitTimeBlocks(uint waitTime) public onlyOwner {
+-        waitTimeBlocks = waitTime;
+-    }
+-    
+-    // Allow the owner to set payoutOdds.
+-    function setPayoutOdds(uint odds) public onlyOwner {
+-        payoutOdds = odds;
+-    }
+-    
+-    // Allow the owner to cash out the holdings of this contract.
+-    function withdraw(address recipient, uint256 balance) public onlyOwner {
+-        recipient.transfer(balance);
+-    }
+-    
+-    // Allow the owner to payout outstanding wagers on others' behalf.
+-    function ownerPayout(address wager_owner) public onlyOwner {
+-        _payout(wager_owner);
+-    }
+-    
+-    // Assume that simple transactions are trying to make a wager, unless it is
+-    // from the owner.
+-    function () payable public {
+-        if (msg.sender != owner) {
+-            makeWager();
++
++    modifier authorized(bytes4 sig) {
++        assert(isAuthorized(msg.sender, sig));
++        _;
++    }
++
++    function isAuthorized(address src, bytes4 sig) internal returns (bool) {
++        if (src == address(this)) {
++            return true;
++        } else if (src == owner) {
++            return true;
++        } else if (authority == DSAuthority(0)) {
++            return false;
++        } else {
++            return authority.canCall(src, this, sig);
+         }
+     }
+-    
+-    // Make a wager.
+-    function makeWager() payable public {
+-        if (msg.value == 0 || msg.value > maxWagerWei) throw;
+-        if (wagers[msg.sender].active) {
+-            // A Wager already exists for this user.
+-            throw;
+-        }
+-        wagers[msg.sender] = Wager({
+-            sender: msg.sender,
+-            wagerWei: msg.value,
+-            creationBlockNumber: block.number,
+-            active: true,
+-        });
+-    }
+-    
+-    // View your wager.
+-    function getMyWager() constant public returns (
+-        uint256 wagerWei,
+-        uint creationBlockNumber,
+-        bool active) {
+-        return getWager(msg.sender);
+-    }
+-    
+-    // View the wager for a given address.
+-    function getWager(address wager_owner) constant public returns (
+-        uint256 wagerWei,
+-        uint creationBlockNumber,
+-        bool active) {
+-        Wager thisWager = wagers[wager_owner];
+-        return (thisWager.wagerWei, thisWager.creationBlockNumber, thisWager.active);
+-    }
+-    
+-    // Payout any wagers associated with the sending address.
+-    function payout() public {
+-        _payout(msg.sender);
+-    }
+-    
+-    // Internal implementation of payout().
+-    function _payout(address wager_owner) internal {
+-        if (!wagers[wager_owner].active) {
+-            // No outstanding active Wager.
+-            throw;
+-        }
+-        uint256 blockDepth = block.number - wagers[wager_owner].creationBlockNumber;
+-        if (blockDepth > waitTimeBlocks) {
+-            // waitTimeBlocks has passed, resolve and payout this wager.
+-            uint256 payoutBlock = wagers[wager_owner].creationBlockNumber + waitTimeBlocks - 1;
+-            uint randNum = getRand(payoutBlock, 10000);
+-            if (randNum < payoutOdds) {
+-                // Wager wins, payout wager.
+-                uint256 winnings = safeMult(wagers[wager_owner].wagerWei, 2);
+-                if (wagers[wager_owner].sender.send(winnings)) {
+-                    wagers[wager_owner].active = false;
+-                }
+-            } else {
+-                // Wager loses, disable wager.
+-                wagers[wager_owner].active = false;
++
++    function assert(bool x) internal {
++        if (!x) throw;
++    }
++}
++
++contract DSStop is DSAuth, DSNote {
++
++    bool public stopped;
++
++    modifier stoppable {
++        assert (!stopped);
++        _;
++    }
++    function stop() auth note {
++        stopped = true;
++    }
++    function start() auth note {
++        stopped = false;
++    }
++
++}
++
++contract DSMath {
++    
++    /*
++    standard uint256 functions
++     */
++
++    function add(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        assert((z = x + y) >= x);
++    }
++
++    function sub(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        assert((z = x - y) <= x);
++    }
++
++    function mul(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        assert((z = x * y) >= x);
++    }
++
++    function div(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        z = x / y;
++    }
++
++    function min(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        return x <= y ? x : y;
++    }
++    function max(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        return x >= y ? x : y;
++    }
++
++    /*
++    uint128 functions (h is for half)
++     */
++
++
++    function hadd(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        assert((z = x + y) >= x);
++    }
++
++    function hsub(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        assert((z = x - y) <= x);
++    }
++
++    function hmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        assert((z = x * y) >= x);
++    }
++
++    function hdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = x / y;
++    }
++
++    function hmin(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        return x <= y ? x : y;
++    }
++    function hmax(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        return x >= y ? x : y;
++    }
++
++
++    /*
++    int256 functions
++     */
++
++    function imin(int256 x, int256 y) constant internal returns (int256 z) {
++        return x <= y ? x : y;
++    }
++    function imax(int256 x, int256 y) constant internal returns (int256 z) {
++        return x >= y ? x : y;
++    }
++
++    /*
++    WAD math
++     */
++
++    uint128 constant WAD = 10 ** 18;
++
++    function wadd(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hadd(x, y);
++    }
++
++    function wsub(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hsub(x, y);
++    }
++
++    function wmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * y + WAD / 2) / WAD);
++    }
++
++    function wdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * WAD + y / 2) / y);
++    }
++
++    function wmin(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmin(x, y);
++    }
++    function wmax(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmax(x, y);
++    }
++
++    /*
++    RAY math
++     */
++
++    uint128 constant RAY = 10 ** 27;
++
++    function radd(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hadd(x, y);
++    }
++
++    function rsub(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hsub(x, y);
++    }
++
++    function rmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * y + RAY / 2) / RAY);
++    }
++
++    function rdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * RAY + y / 2) / y);
++    }
++
++    function rpow(uint128 x, uint64 n) constant internal returns (uint128 z) {
++        // This famous algorithm is called "exponentiation by squaring"
++        // and calculates x^n with x as fixed-point and n as regular unsigned.
++        //
++        // It's O(log n), instead of O(n) for naive repeated multiplication.
++        //
++        // These facts are why it works:
++        //
++        //  If n is even, then x^n = (x^2)^(n/2).
++        //  If n is odd,  then x^n = x * x^(n-1),
++        //   and applying the equation for even x gives
++        //    x^n = x * (x^2)^((n-1) / 2).
++        //
++        //  Also, EVM division is flooring and
++        //    floor[(n-1) / 2] = floor[n / 2].
++
++        z = n % 2 != 0 ? x : RAY;
++
++        for (n /= 2; n != 0; n /= 2) {
++            x = rmul(x, x);
++
++            if (n % 2 != 0) {
++                z = rmul(z, x);
+             }
+         }
+     }
++
++    function rmin(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmin(x, y);
++    }
++    function rmax(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmax(x, y);
++    }
++
++    function cast(uint256 x) constant internal returns (uint128 z) {
++        assert((z = uint128(x)) == x);
++    }
++
++}
++
++contract ERC20 {
++    function totalSupply() constant returns (uint supply);
++    function balanceOf( address who ) constant returns (uint value);
++    function allowance( address owner, address spender ) constant returns (uint _allowance);
++
++    function transfer( address to, uint value) returns (bool ok);
++    function transferFrom( address from, address to, uint value) returns (bool ok);
++    function approve( address spender, uint value ) returns (bool ok);
++
++    event Transfer( address indexed from, address indexed to, uint value);
++    event Approval( address indexed owner, address indexed spender, uint value);
++}
++
++contract DSTokenBase is ERC20, DSMath {
++    uint256                                            _supply;
++    mapping (address => uint256)                       _balances;
++    mapping (address => mapping (address => uint256))  _approvals;
++    
++    function DSTokenBase(uint256 supply) {
++        _balances[msg.sender] = supply;
++        _supply = supply;
++    }
++    
++    function totalSupply() constant returns (uint256) {
++        return _supply;
++    }
++    function balanceOf(address src) constant returns (uint256) {
++        return _balances[src];
++    }
++    function allowance(address src, address guy) constant returns (uint256) {
++        return _approvals[src][guy];
++    }
++    
++    function transfer(address dst, uint wad) returns (bool) {
++        assert(_balances[msg.sender] >= wad);
++        
++        _balances[msg.sender] = sub(_balances[msg.sender], wad);
++        _balances[dst] = add(_balances[dst], wad);
++        
++        Transfer(msg.sender, dst, wad);
++        
++        return true;
++    }
++    
++    function transferFrom(address src, address dst, uint wad) returns (bool) {
++        assert(_balances[src] >= wad);
++        assert(_approvals[src][msg.sender] >= wad);
++        
++        _approvals[src][msg.sender] = sub(_approvals[src][msg.sender], wad);
++        _balances[src] = sub(_balances[src], wad);
++        _balances[dst] = add(_balances[dst], wad);
++        
++        Transfer(src, dst, wad);
++        
++        return true;
++    }
++    
++    function approve(address guy, uint256 wad) returns (bool) {
++        _approvals[msg.sender][guy] = wad;
++        
++        Approval(msg.sender, guy, wad);
++        
++        return true;
++    }
++
++}
++
++contract DSToken is DSTokenBase(0), DSStop {
++
++    bytes32  public  symbol;
++    uint256  public  decimals = 18; // standard token precision. override to customize
++
++    function DSToken(bytes32 symbol_) {
++        symbol = symbol_;
++    }
++
++    function transfer(address dst, uint wad) stoppable note returns (bool) {
++        return super.transfer(dst, wad);
++    }
++    function transferFrom(
++        address src, address dst, uint wad
++    ) stoppable note returns (bool) {
++        return super.transferFrom(src, dst, wad);
++    }
++    function approve(address guy, uint wad) stoppable note returns (bool) {
++        return super.approve(guy, wad);
++    }
++
++    function push(address dst, uint128 wad) returns (bool) {
++        return transfer(dst, wad);
++    }
++    function pull(address src, uint128 wad) returns (bool) {
++        return transferFrom(src, msg.sender, wad);
++    }
++
++    function mint(uint128 wad) auth stoppable note {
++        _balances[msg.sender] = add(_balances[msg.sender], wad);
++        _supply = add(_supply, wad);
++    }
++    function burn(uint128 wad) auth stoppable note {
++        _balances[msg.sender] = sub(_balances[msg.sender], wad);
++        _supply = sub(_supply, wad);
++    }
++
++    // Optional token name
++
++    bytes32   public  name = "";
++    
++    function setName(bytes32 name_) auth {
++        name = name_;
++    }
++
+ }

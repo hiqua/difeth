@@ -1,0 +1,61 @@
+--- 
++++ 
+@@ -24,7 +24,7 @@
+ // Random is a block hash based random number generator.
+ contract Random {
+     // Generates a random number from 0 to max based on the last block hash.
+-    function getRand(uint blockNumber, uint max) constant internal returns(uint) {
++    function getRand(uint blockNumber, uint max) constant returns(uint) {
+         return(uint(sha3(block.blockhash(blockNumber))) % max);
+     }
+ }
+@@ -106,6 +106,14 @@
+         recipient.transfer(balance);
+     }
+     
++    // View your wager.
++    function getWagerOwner(address wager_owner) constant public returns (
++        uint256 wagerWei,
++        uint creationBlockNumber,
++        bool active) {
++        return _getWager(wager_owner);
++    }
++    
+     // Allow the owner to payout outstanding wagers on others' behalf.
+     function ownerPayout(address wager_owner) public onlyOwner {
+         _payout(wager_owner);
+@@ -135,25 +143,25 @@
+     }
+     
+     // View your wager.
+-    function getMyWager() constant public returns (
++    function getWager() constant public returns (
+         uint256 wagerWei,
+         uint creationBlockNumber,
+         bool active) {
+-        return getWager(msg.sender);
++        return _getWager(msg.sender);
+     }
+     
+-    // View the wager for a given address.
+-    function getWager(address wager_owner) constant public returns (
++    // Payout any wagers associated with the sending address.
++    function payout() public {
++        _payout(msg.sender);
++    }
++    
++    // Internal implementation of getWager().
++    function _getWager(address wager_owner) constant public returns (
+         uint256 wagerWei,
+         uint creationBlockNumber,
+         bool active) {
+         Wager thisWager = wagers[wager_owner];
+         return (thisWager.wagerWei, thisWager.creationBlockNumber, thisWager.active);
+-    }
+-    
+-    // Payout any wagers associated with the sending address.
+-    function payout() public {
+-        _payout(msg.sender);
+     }
+     
+     // Internal implementation of payout().

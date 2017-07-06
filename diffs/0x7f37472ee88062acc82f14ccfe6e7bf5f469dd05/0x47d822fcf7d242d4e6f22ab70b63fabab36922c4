@@ -1,0 +1,13 @@
+--- 
++++ 
+@@ -178,8 +178,9 @@
+                 lastPayoutIndex = 0;
+                 remunerationStage = 0;
+                 remunerationBalance = 0;
+-
+                 auxPartnerBalance = 0;
++                developersGranted = false;
++                lastPayoutTime = 0;
+ 
+                 if (this.balance > 0) {
+                         if (!owner.call.gas(rfGas).value(this.balance)())

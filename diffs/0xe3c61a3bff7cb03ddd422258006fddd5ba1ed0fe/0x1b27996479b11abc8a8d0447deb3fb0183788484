@@ -1,0 +1,28 @@
+--- 
++++ 
+@@ -18,19 +18,18 @@
+ // @author ethernian
+ //
+ 
+-
+ contract Presale {
+ 
+     string public constant VERSION = "0.1.3-beta";
+ 
+ 	/* ====== configuration START ====== */
+ 
+-	uint public constant PRESALE_START  = 3116646; //	approx. 	03.02.2017 18:50
+-	uint public constant PRESALE_END    = 3116686; //	approx. 	03.02.2017 19:00
+-	uint public constant WITHDRAWAL_END = 3116726; //	approx. 	03.02.2017 19:10
+-
+-
+-	address public constant OWNER = 0xA4769870EB607A4fDaBFfbcC3AD066c8213bD87D;
++	uint public constant PRESALE_START  = 3051585;    /* approx. 23.01.2017 23:45 CET */
++	uint public constant PRESALE_END    = 3055605;    /* approx. 24.01.2017 16:30 CET */
++	uint public constant WITHDRAWAL_END = 3056325;    /* approx. 24.01.2017 19:30 CET */
++
++
++	address public constant OWNER = 0x45d5426471D12b21C3326dD0cF96f6656F7d14b1;
+ 	
+     uint public constant MIN_TOTAL_AMOUNT_TO_RECEIVE_ETH = 1;
+     uint public constant MAX_TOTAL_AMOUNT_TO_RECEIVE_ETH = 5;

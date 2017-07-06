@@ -1,0 +1,15 @@
+--- 
++++ 
+@@ -34,9 +34,10 @@
+     string public constant VERSION = "0.1.4-beta";
+ 
+     /* ====== configuration START ====== */
++    
+     uint public constant PRESALE_START  = 3147370; /* approx. 08.02.2017 20:15 */
+-    uint public constant PRESALE_END    = 3155594; /* approx. 10.02.2017 20:00 */
+-    uint public constant WITHDRAWAL_END = 3161353; /* approx. 11.02.2017 20:00 */
++    uint public constant PRESALE_END    = 3147494; /* approx. 09.02.2017 08:00 */
++    uint public constant WITHDRAWAL_END = 3153254; /* approx. 10.02.2017 08:00 */
+ 
+ 
+     address public constant OWNER = 0xE76fE52a251C8F3a5dcD657E47A6C8D16Fdf4bFA;

@@ -1,0 +1,46 @@
+--- 
++++ 
+@@ -91,19 +91,6 @@
+         return false;
+     }
+     
+-    function __callback(bytes32 myid, string result) {
+-        __callback(myid, result, new bytes(0));
+-    }
+-    function __callback(bytes32 myid, string result, bytes proof) {
+-    }
+-    
+-    function oraclize_getPrice(string datasource) oraclizeAPI internal returns (uint){
+-        return oraclize.getPrice(datasource);
+-    }
+-    function oraclize_getPrice(string datasource, uint gaslimit) oraclizeAPI internal returns (uint){
+-        return oraclize.getPrice(datasource, gaslimit);
+-    }
+-    
+     function oraclize_query(string datasource, string arg) oraclizeAPI internal returns (bytes32 id){
+         uint price = oraclize.getPrice(datasource);
+         if (price > 1 ether + tx.gasprice*200000) return 0; // unexpectedly high price
+@@ -306,12 +293,12 @@
+ 
+ contract Dice is usingOraclize {
+ 
+-    uint constant pwin = 1000; //probability of winning (10000 = 100%)
++    uint constant pwin = 7500; //probability of winning (10000 = 100%)
+     uint constant edge = 190; //edge percentage (10000 = 100%)
+     uint constant maxWin = 100; //max win (before edge is taken) as percentage of bankroll (10000 = 100%)
+     uint constant minBet = 200 finney;
+     uint constant maxInvestors = 10; //maximum number of investors
+-    uint constant houseEdge = 90; //edge percentage (10000 = 100%)
++    uint constant houseEdge = 25; //edge percentage (10000 = 100%)
+     uint constant divestFee = 50; //divest fee percentage (10000 = 100%)
+     uint constant emergencyWithdrawalRatio = 10; //ratio percentage (100 = 100%)
+ 
+@@ -716,7 +703,7 @@
+             bytes32 myid =
+                 oraclize_query(
+                     "nested",
+-                    "[URL] ['json(https://api.random.org/json-rpc/1/invoke).result.random.data.0', '\\n{\"jsonrpc\":\"2.0\",\"method\":\"generateSignedIntegers\",\"params\":{\"apiKey\":${[decrypt] BJ5a3yY9W3QsrTn/ChMwRJBtt+I5S4aEM6RVELUydl2tlqEjYIHoiWFnaatIUAQ76prgz1uoWI4Zpdj0gNMSS3n/vn7br6SMy9zpLZCRVqPS7TIcYHMJdLAn9AuzvsQv/htDTK0G1AnYcVppBzI+Zrii74hk7Ew=},\"n\":1,\"min\":1,\"max\":10000${[identity] \"}\"},\"id\":1${[identity] \"}\"}']",
++                    "[URL] ['json(https://api.random.org/json-rpc/1/invoke).result.random.data.0', '\\n{\"jsonrpc\":\"2.0\",\"method\":\"generateSignedIntegers\",\"params\":{\"apiKey\":${[decrypt] BD/A+lI7OwcDJW+y4Qo1cDia95LO/jW5x1X12pluCsF5Z/U9GbhKxVk3OPEjWBskxHy980dPa5y9y0XVg6TknHK9z+bK9gckTQUPP7LUonPlxdhHnyhq1t1uop06yXzkIn6rER/huIwvrk0rt6eVW3RBqSDpK3o=},\"n\":1,\"min\":1,\"max\":10000${[identity] \"}\"},\"id\":1${[identity] \"}\"}']",
+                     ORACLIZE_GAS_LIMIT + safeGas
+                 );
+             bets[myid] = Bet(msg.sender, betValue, 0);

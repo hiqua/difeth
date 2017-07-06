@@ -1,0 +1,582 @@
+--- 
++++ 
+@@ -1,206 +1,376 @@
+-pragma solidity ^0.4.11;
+-
+-/*
+-  Allows buyers to securely/confidently buy recent ICO tokens that are
+-  still non-transferrable, on an IOU basis. Like HitBTC, but with protection,
+-  control, and guarantee of either the purchased tokens or ETH refunded.
+-
+-  The Buyer's ETH will be locked into the contract until the purchased
+-  IOU/tokens arrive here and are ready for the buyer to invoke withdraw(),
+-  OR until cut-off time defined below is exceeded and as a result ETH
+-  refunds/withdrawals become enabled.
+-
+-  In other words, the seller must fulfill the IOU token purchases any time
+-  before the cut-off time defined below, otherwise the buyer gains the
+-  ability to withdraw their ETH.
+-
+-  The buyer's ETH will ONLY be released to the seller AFTER the adequate
+-  amount of tokens have been deposited for ALL purchases.
+-
+-  Estimated Time of Distribution: 3-5 weeks from ICO according to TenX
+-  Cut-off Time: ~ August 9, 2017
+-
+-  Greetz: blast
+-  foobarbizarre@gmail.com (Please report any findings or suggestions for a 1 ETH bounty!)
+-
+-  Thank you
+-*/
++contract DSNote {
++    event LogNote(
++        bytes4   indexed  sig,
++        address  indexed  guy,
++        bytes32  indexed  foo,
++        bytes32  indexed  bar,
++	uint	 	  wad,
++        bytes             fax
++    ) anonymous;
++
++    modifier note {
++        bytes32 foo;
++        bytes32 bar;
++
++        assembly {
++            foo := calldataload(4)
++            bar := calldataload(36)
++        }
++
++        LogNote(msg.sig, msg.sender, foo, bar, msg.value, msg.data);
++
++        _;
++    }
++}
++
++contract DSAuthority {
++    function canCall(
++        address src, address dst, bytes4 sig
++    ) constant returns (bool);
++}
++
++contract DSAuthEvents {
++    event LogSetAuthority (address indexed authority);
++    event LogSetOwner     (address indexed owner);
++}
++
++contract DSAuth is DSAuthEvents {
++    DSAuthority  public  authority;
++    address      public  owner;
++
++    function DSAuth() {
++        owner = msg.sender;
++        LogSetOwner(msg.sender);
++    }
++
++    function setOwner(address owner_)
++        auth
++    {
++        owner = owner_;
++        LogSetOwner(owner);
++    }
++
++    function setAuthority(DSAuthority authority_)
++        auth
++    {
++        authority = authority_;
++        LogSetAuthority(authority);
++    }
++
++    modifier auth {
++        assert(isAuthorized(msg.sender, msg.sig));
++        _;
++    }
++
++    modifier authorized(bytes4 sig) {
++        assert(isAuthorized(msg.sender, sig));
++        _;
++    }
++
++    function isAuthorized(address src, bytes4 sig) internal returns (bool) {
++        if (src == address(this)) {
++            return true;
++        } else if (src == owner) {
++            return true;
++        } else if (authority == DSAuthority(0)) {
++            return false;
++        } else {
++            return authority.canCall(src, this, sig);
++        }
++    }
++
++    function assert(bool x) internal {
++        if (!x) throw;
++    }
++}
++
++contract DSStop is DSAuth, DSNote {
++
++    bool public stopped;
++
++    modifier stoppable {
++        assert (!stopped);
++        _;
++    }
++    function stop() auth note {
++        stopped = true;
++    }
++    function start() auth note {
++        stopped = false;
++    }
++
++}
++
++contract DSMath {
++    
++    /*
++    standard uint256 functions
++     */
++
++    function add(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        assert((z = x + y) >= x);
++    }
++
++    function sub(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        assert((z = x - y) <= x);
++    }
++
++    function mul(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        assert((z = x * y) >= x);
++    }
++
++    function div(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        z = x / y;
++    }
++
++    function min(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        return x <= y ? x : y;
++    }
++    function max(uint256 x, uint256 y) constant internal returns (uint256 z) {
++        return x >= y ? x : y;
++    }
++
++    /*
++    uint128 functions (h is for half)
++     */
++
++
++    function hadd(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        assert((z = x + y) >= x);
++    }
++
++    function hsub(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        assert((z = x - y) <= x);
++    }
++
++    function hmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        assert((z = x * y) >= x);
++    }
++
++    function hdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = x / y;
++    }
++
++    function hmin(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        return x <= y ? x : y;
++    }
++    function hmax(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        return x >= y ? x : y;
++    }
++
++
++    /*
++    int256 functions
++     */
++
++    function imin(int256 x, int256 y) constant internal returns (int256 z) {
++        return x <= y ? x : y;
++    }
++    function imax(int256 x, int256 y) constant internal returns (int256 z) {
++        return x >= y ? x : y;
++    }
++
++    /*
++    WAD math
++     */
++
++    uint128 constant WAD = 10 ** 18;
++
++    function wadd(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hadd(x, y);
++    }
++
++    function wsub(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hsub(x, y);
++    }
++
++    function wmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * y + WAD / 2) / WAD);
++    }
++
++    function wdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * WAD + y / 2) / y);
++    }
++
++    function wmin(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmin(x, y);
++    }
++    function wmax(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmax(x, y);
++    }
++
++    /*
++    RAY math
++     */
++
++    uint128 constant RAY = 10 ** 27;
++
++    function radd(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hadd(x, y);
++    }
++
++    function rsub(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hsub(x, y);
++    }
++
++    function rmul(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * y + RAY / 2) / RAY);
++    }
++
++    function rdiv(uint128 x, uint128 y) constant internal returns (uint128 z) {
++        z = cast((uint256(x) * RAY + y / 2) / y);
++    }
++
++    function rpow(uint128 x, uint64 n) constant internal returns (uint128 z) {
++        // This famous algorithm is called "exponentiation by squaring"
++        // and calculates x^n with x as fixed-point and n as regular unsigned.
++        //
++        // It's O(log n), instead of O(n) for naive repeated multiplication.
++        //
++        // These facts are why it works:
++        //
++        //  If n is even, then x^n = (x^2)^(n/2).
++        //  If n is odd,  then x^n = x * x^(n-1),
++        //   and applying the equation for even x gives
++        //    x^n = x * (x^2)^((n-1) / 2).
++        //
++        //  Also, EVM division is flooring and
++        //    floor[(n-1) / 2] = floor[n / 2].
++
++        z = n % 2 != 0 ? x : RAY;
++
++        for (n /= 2; n != 0; n /= 2) {
++            x = rmul(x, x);
++
++            if (n % 2 != 0) {
++                z = rmul(z, x);
++            }
++        }
++    }
++
++    function rmin(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmin(x, y);
++    }
++    function rmax(uint128 x, uint128 y) constant internal returns (uint128) {
++        return hmax(x, y);
++    }
++
++    function cast(uint256 x) constant internal returns (uint128 z) {
++        assert((z = uint128(x)) == x);
++    }
++
++}
+ 
+ contract ERC20 {
+-  function transfer(address _to, uint _value);
+-  function balanceOf(address _owner) constant returns (uint balance);
+-}
+-
+-contract IOU {
+-  // Store the amount of IOUs purchased by a buyer
+-  mapping (address => uint256) public iou_purchased;
+-
+-  // Store the amount of ETH sent in by a buyer
+-  mapping (address => uint256) public eth_sent;
+-
+-  // Total IOUs available to sell
+-  uint256 public total_iou_available = 40000000000000000000000;
+-
+-  // Total IOUs purchased by all buyers
+-  uint256 public total_iou_purchased;
+-
+-  // Total IOU withdrawn by all buyers (keep track to protect buyers)
+-  uint256 public total_iou_withdrawn;
+-
+-  // IOU per ETH (price)
+-  uint256 public price_per_eth = 100;
+-
+-  //  PAY token contract address (IOU offering)
+-  ERC20 public token = ERC20(0xB97048628DB6B661D4C2aA833e95Dbe1A905B280);
+-
+-  // The seller's address (to receive ETH upon distribution, and for authing safeties)
+-  address seller = 0x496529c12e229e9787D37E5EFA2E48B651e755B0;
+-
+-  // Halt further purchase ability just in case
+-  bool public halt_purchases;
+-
+-  modifier pwner() { if(msg.sender != seller) throw; _; }
+-
+-  /*
+-    Safety to withdraw unbought tokens back to seller. Ensures the amount
+-    that buyers still need to withdraw remains available
+-  */
+-  function withdrawTokens() pwner {
+-    token.transfer(seller, token.balanceOf(address(this)) - (total_iou_purchased - total_iou_withdrawn));
+-  }
+-
+-  /*
+-    Safety to prevent anymore purchases/sales from occurring in the event of
+-    unforeseen issue. Buyer withdrawals still remain enabled.
+-  */
+-  function haltPurchases() pwner {
+-    halt_purchases = true;
+-  }
+-
+-  function resumePurchases() pwner {
+-    halt_purchases = false;
+-  }
+-
+-  /*
+-    Update available IOU to purchase
+-  */
+-  function updateAvailability(uint256 _iou_amount) pwner {
+-    if(_iou_amount < total_iou_purchased) throw;
+-
+-    total_iou_available = _iou_amount;
+-  }
+-
+-  /*
+-    Update IOU price
+-  */
+-  function updatePrice(uint256 _price) pwner {
+-    price_per_eth = _price;
+-  }
+-
+-  /*
+-    Release buyer's ETH to seller ONLY if amount of contract's tokens balance
+-    is >= to the amount that still needs to be withdrawn. Protects buyer.
+-
+-    The seller must call this function manually after depositing the adequate
+-    amount of tokens for all buyers to collect
+-
+-    This effectively ends the sale, but withdrawals remain open
+-  */
+-  function paySeller() pwner {
+-    // not enough tokens in balance to release ETH, protect buyer and abort
+-    if(token.balanceOf(address(this)) < (total_iou_purchased - total_iou_withdrawn)) throw;
+-
+-    // Halt further purchases to prevent accidental over-selling
+-    halt_purchases = true;
+-
+-    // Release buyer's ETH to the seller
+-    seller.transfer(this.balance);
+-  }
+-
+-  function withdraw() payable {
+-    /*
+-      Main mechanism to ensure a buyer's purchase/ETH/IOU is safe.
+-
+-      Refund the buyer's ETH if we're beyond the cut-off date of our distribution
+-      promise AND if the contract doesn't have an adequate amount of tokens
+-      to distribute to the buyer. Time-sensitive buyer/ETH protection is only
+-      applicable if the contract doesn't have adequate tokens for the buyer.
+-
+-      The "adequacy" check prevents the seller and/or third party attacker
+-      from locking down buyers' ETH by sending in an arbitrary amount of tokens.
+-
+-      If for whatever reason the tokens remain locked for an unexpected period
+-      beyond the time defined by block.number, patient buyers may still wait until
+-      the contract is filled with their purchased IOUs/tokens. Once the tokens
+-      are here, they can initiate a withdraw() to retrieve their tokens. Attempting
+-      to withdraw any sooner (after the block has been mined, but tokens not arrived)
+-      will result in a refund of buyer's ETH.
+-    */
+-    if(block.number > 4199999 && iou_purchased[msg.sender] > token.balanceOf(address(this))) {
+-      // We didn't fulfill our promise to have adequate tokens withdrawable at xx time
+-      // Refund the buyer's ETH automatically instead
+-      uint256 eth_to_refund = eth_sent[msg.sender];
+-
+-      // If the user doesn't have any ETH or tokens to withdraw, get out ASAP
+-      if(eth_to_refund == 0 || iou_purchased[msg.sender] == 0) throw;
+-
+-      // Adjust total purchased so others can buy, and so numbers align with total_iou_withdrawn
+-      total_iou_purchased -= iou_purchased[msg.sender];
+-
+-      // Clear record of buyer's ETH and IOU balance before refunding
+-      eth_sent[msg.sender] = 0;
+-      iou_purchased[msg.sender] = 0;
+-
+-      msg.sender.transfer(eth_to_refund);
+-      return;
+-    }
+-
+-    /*
+-      Check if there is an adequate amount of tokens in the contract yet
+-      and allow the buyer to withdraw tokens
+-    */
+-    if(token.balanceOf(address(this)) == 0 || iou_purchased[msg.sender] > token.balanceOf(address(this))) throw;
+-
+-    uint256 iou_to_withdraw = iou_purchased[msg.sender];
+-
+-    // If the user doesn't have any IOUs to withdraw, get out ASAP
+-    if(iou_to_withdraw == 0) throw;
+-
+-    // Clear record of buyer's IOU and ETH balance before transferring out
+-    iou_purchased[msg.sender] = 0;
+-    eth_sent[msg.sender] = 0;
+-
+-    total_iou_withdrawn += iou_to_withdraw;
+-
+-    // Distribute tokens to the buyer
+-    token.transfer(msg.sender, iou_to_withdraw);
+-  }
+-
+-  function purchase() payable {
+-    if(halt_purchases) throw;
+-    if(msg.value == 0) throw;
+-
+-    // Determine amount of tokens user wants to/can buy
+-    uint256 iou_to_purchase = price_per_eth * msg.value;
+-
+-    // Check if we have enough IOUs left to sell
+-    if((total_iou_purchased + iou_to_purchase) > total_iou_available) throw;
+-
+-    // Update the amount of IOUs purchased by user. Also keep track of the total ETH they sent in
+-    iou_purchased[msg.sender] += iou_to_purchase;
+-    eth_sent[msg.sender] += msg.value;
+-
+-    // Update the total amount of IOUs purchased by all buyers
+-    total_iou_purchased += iou_to_purchase;
+-  }
+-
+-  // Fallback function/entry point
+-  function () payable {
+-    if(msg.value == 0) {
+-      withdraw();
+-    }
+-    else {
+-      purchase();
+-    }
+-  }
++    function totalSupply() constant returns (uint supply);
++    function balanceOf( address who ) constant returns (uint value);
++    function allowance( address owner, address spender ) constant returns (uint _allowance);
++
++    function transfer( address to, uint value) returns (bool ok);
++    function transferFrom( address from, address to, uint value) returns (bool ok);
++    function approve( address spender, uint value ) returns (bool ok);
++
++    event Transfer( address indexed from, address indexed to, uint value);
++    event Approval( address indexed owner, address indexed spender, uint value);
++}
++
++contract DSTokenBase is ERC20, DSMath {
++    uint256                                            _supply;
++    mapping (address => uint256)                       _balances;
++    mapping (address => mapping (address => uint256))  _approvals;
++    
++    function DSTokenBase(uint256 supply) {
++        _balances[msg.sender] = supply;
++        _supply = supply;
++    }
++    
++    function totalSupply() constant returns (uint256) {
++        return _supply;
++    }
++    function balanceOf(address src) constant returns (uint256) {
++        return _balances[src];
++    }
++    function allowance(address src, address guy) constant returns (uint256) {
++        return _approvals[src][guy];
++    }
++    
++    function transfer(address dst, uint wad) returns (bool) {
++        assert(_balances[msg.sender] >= wad);
++        
++        _balances[msg.sender] = sub(_balances[msg.sender], wad);
++        _balances[dst] = add(_balances[dst], wad);
++        
++        Transfer(msg.sender, dst, wad);
++        
++        return true;
++    }
++    
++    function transferFrom(address src, address dst, uint wad) returns (bool) {
++        assert(_balances[src] >= wad);
++        assert(_approvals[src][msg.sender] >= wad);
++        
++        _approvals[src][msg.sender] = sub(_approvals[src][msg.sender], wad);
++        _balances[src] = sub(_balances[src], wad);
++        _balances[dst] = add(_balances[dst], wad);
++        
++        Transfer(src, dst, wad);
++        
++        return true;
++    }
++    
++    function approve(address guy, uint256 wad) returns (bool) {
++        _approvals[msg.sender][guy] = wad;
++        
++        Approval(msg.sender, guy, wad);
++        
++        return true;
++    }
++
++}
++
++contract DSToken is DSTokenBase(0), DSStop {
++
++    bytes32  public  symbol;
++    uint256  public  decimals = 18; // standard token precision. override to customize
++
++    function DSToken(bytes32 symbol_) {
++        symbol = symbol_;
++    }
++
++    function transfer(address dst, uint wad) stoppable note returns (bool) {
++        return super.transfer(dst, wad);
++    }
++    function transferFrom(
++        address src, address dst, uint wad
++    ) stoppable note returns (bool) {
++        return super.transferFrom(src, dst, wad);
++    }
++    function approve(address guy, uint wad) stoppable note returns (bool) {
++        return super.approve(guy, wad);
++    }
++
++    function push(address dst, uint128 wad) returns (bool) {
++        return transfer(dst, wad);
++    }
++    function pull(address src, uint128 wad) returns (bool) {
++        return transferFrom(src, msg.sender, wad);
++    }
++
++    function mint(uint128 wad) auth stoppable note {
++        _balances[msg.sender] = add(_balances[msg.sender], wad);
++        _supply = add(_supply, wad);
++    }
++    function burn(uint128 wad) auth stoppable note {
++        _balances[msg.sender] = sub(_balances[msg.sender], wad);
++        _supply = sub(_supply, wad);
++    }
++
++    // Optional token name
++
++    bytes32   public  name = "";
++    
++    function setName(bytes32 name_) auth {
++        name = name_;
++    }
++
+ }

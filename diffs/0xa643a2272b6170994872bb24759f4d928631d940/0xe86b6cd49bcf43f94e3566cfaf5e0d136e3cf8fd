@@ -1,0 +1,11 @@
+--- 
++++ 
+@@ -124,7 +124,7 @@
+ 
+ contract CrowdsaleMinter is Owned {
+ 
+-    string public constant VERSION = "0.2.1-TEST.ET.1";
++    string public constant VERSION = "0.2.1-TEST.MAX.3";
+ 
+     /* ====== configuration START ====== */
+     uint public constant COMMUNITY_SALE_START = 3972380; /* approx. 04.07.2017 12:00 */

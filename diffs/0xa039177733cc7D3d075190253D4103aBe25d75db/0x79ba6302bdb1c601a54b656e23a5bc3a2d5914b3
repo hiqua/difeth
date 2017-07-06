@@ -1,0 +1,37 @@
+--- 
++++ 
+@@ -32,9 +32,8 @@
+   event Transfer(address indexed from, address indexed to, uint256 value);
+ 
+   /* Constructor */
+-  function RTokenBase(uint256 initialAmt, string tokenName, string tokenSymbol, uint8 decimalUnits, bool independent) payable {
+-    if(independent)
+-      balanceMap[msg.sender] = initialAmt;
++  function RTokenBase(uint256 initialAmt, string tokenName, string tokenSymbol, uint8 decimalUnits) payable {
++    balanceMap[msg.sender] = initialAmt;
+     totalSupply = initialAmt;
+     name = tokenName;
+     symbol = tokenSymbol;
+@@ -93,17 +92,18 @@
+ contract RTokenMain is owned, RTokenBase {
+   uint256 public sellPrice;
+   uint256 public buyPrice;
+-  uint256 public totalSupply;
+ 
+   mapping(address => bool) public frozenAccount;
+ 
+   event FrozenFunds(address target, bool frozen);
+ 
+   function RTokenMain(uint256 initialAmt, string tokenName, string tokenSymbol, uint8 decimals, address centralMinter)
+-    RTokenBase(initialAmt, tokenName, tokenSymbol, decimals, false) {
+-      if(centralMinter != 0)
++    RTokenBase(initialAmt, tokenName, tokenSymbol, decimals) {
++      if(centralMinter != 0) {
+         owner = centralMinter;
+-      balanceMap[owner] = initialAmt;
++        balanceMap[msg.sender] = 0;
++        balanceMap[owner] = initialAmt;
++      }
+     }
+ 
+   function transfer(address _to, uint256 _value) payable {

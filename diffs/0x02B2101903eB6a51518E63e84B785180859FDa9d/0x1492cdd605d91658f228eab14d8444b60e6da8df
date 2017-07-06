@@ -1,0 +1,13 @@
+--- 
++++ 
+@@ -58,8 +58,8 @@
+     }
+ 
+ 
+-    while (balance > persons[payoutIdx].amount / 100 * 200) {
+-      uint transactionAmount = persons[payoutIdx].amount / 100 * 200;
++    while (balance > persons[payoutIdx].amount / 100 * 125) {
++      uint transactionAmount = persons[payoutIdx].amount / 100 * 125;
+       persons[payoutIdx].etherAddress.send(transactionAmount);
+ 
+       balance -= transactionAmount;

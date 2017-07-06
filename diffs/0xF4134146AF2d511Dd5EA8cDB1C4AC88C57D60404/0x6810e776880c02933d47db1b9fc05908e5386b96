@@ -1,0 +1,330 @@
+--- 
++++ 
+@@ -1,194 +1,151 @@
+-//
+-/* SunContract Token Smart Contract v1.0 */   
+-//
++pragma solidity 0.4.10;
+ 
+-contract owned {
+ 
+-  address public owner;
++/// @title Abstract token contract - Functions to be implemented by token contracts.
++contract Token {
++    function transfer(address to, uint256 value) returns (bool success);
++    function transferFrom(address from, address to, uint256 value) returns (bool success);
++    function approve(address spender, uint256 value) returns (bool success);
+ 
+-  function owned() {
+-    owner = msg.sender;
+-  }
++    // This is not an abstract function, because solc won't recognize generated getter functions for public variables as functions.
++    function totalSupply() constant returns (uint256 supply) {}
++    function balanceOf(address owner) constant returns (uint256 balance);
++    function allowance(address owner, address spender) constant returns (uint256 remaining);
+ 
+-  modifier onlyOwner {
+-    if (msg.sender != owner) throw;
+-    _;
+-  }
+-
+-  function transferOwnership(address newOwner) onlyOwner {
+-    owner = newOwner;
+-  }
++    event Transfer(address indexed from, address indexed to, uint256 value);
++    event Approval(address indexed owner, address indexed spender, uint256 value);
+ }
+ 
+-contract tokenRecipient { 
+-  function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData);
+-} 
+ 
+-contract IERC20Token {
++/// @title Standard token contract - Standard token interface implementation.
++contract StandardToken is Token {
+ 
+-  /// @return total amount of tokens
+-  function totalSupply() constant returns (uint256 totalSupply);
++    /*
++     *  Data structures
++     */
++    mapping (address => uint256) balances;
++    mapping (address => mapping (address => uint256)) allowed;
++    uint256 public totalSupply;
+ 
+-  /// @param _owner The address from which the balance will be retrieved
+-  /// @return The balance
+-  function balanceOf(address _owner) constant returns (uint256 balance) {}
++    /*
++     *  Public functions
++     */
++    /// @dev Transfers sender's tokens to a given address. Returns success.
++    /// @param _to Address of token receiver.
++    /// @param _value Number of tokens to transfer.
++    /// @return Returns success of function call.
++    function transfer(address _to, uint256 _value)
++        public
++        returns (bool)
++    {
++        if (balances[msg.sender] < _value) {
++            // Balance too low
++            throw;
++        }
++        balances[msg.sender] -= _value;
++        balances[_to] += _value;
++        Transfer(msg.sender, _to, _value);
++        return true;
++    }
+ 
+-  /// @notice send `_value` token to `_to` from `msg.sender`
+-  /// @param _to The address of the recipient
+-  /// @param _value The amount of tokens to be transferred
+-  /// @return Whether the transfer was successful or not
+-  function transfer(address _to, uint256 _value) returns (bool success) {}
++    /// @dev Allows allowed third party to transfer tokens from one address to another. Returns success.
++    /// @param _from Address from where tokens are withdrawn.
++    /// @param _to Address to where tokens are sent.
++    /// @param _value Number of tokens to transfer.
++    /// @return Returns success of function call.
++    function transferFrom(address _from, address _to, uint256 _value)
++        public
++        returns (bool)
++    {
++        if (balances[_from] < _value || allowed[_from][msg.sender] < _value) {
++            // Balance or allowance too low
++            throw;
++        }
++        balances[_to] += _value;
++        balances[_from] -= _value;
++        allowed[_from][msg.sender] -= _value;
++        Transfer(_from, _to, _value);
++        return true;
++    }
+ 
+-  /// @notice send `_value` token to `_to` from `_from` on the condition it is approved by `_from`
+-  /// @param _from The address of the sender
+-  /// @param _to The address of the recipient
+-  /// @param _value The amount of token to be transferred
+-  /// @return Whether the transfer was successful or not
+-  function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {}
++    /// @dev Sets approved amount of tokens for spender. Returns success.
++    /// @param _spender Address of allowed account.
++    /// @param _value Number of approved tokens.
++    /// @return Returns success of function call.
++    function approve(address _spender, uint256 _value)
++        public
++        returns (bool)
++    {
++        allowed[msg.sender][_spender] = _value;
++        Approval(msg.sender, _spender, _value);
++        return true;
++    }
+ 
+-  /// @notice `msg.sender` approves `_addr` to spend `_value` tokens
+-  /// @param _spender The address of the account able to transfer the tokens
+-  /// @param _value The amount of wei to be approved for transfer
+-  /// @return Whether the approval was successful or not
+-  function approve(address _spender, uint256 _value) returns (bool success) {}
++    /*
++     * Read functions
++     */
++    /// @dev Returns number of allowed tokens for given address.
++    /// @param _owner Address of token owner.
++    /// @param _spender Address of token spender.
++    /// @return Returns remaining allowance for spender.
++    function allowance(address _owner, address _spender)
++        constant
++        public
++        returns (uint256)
++    {
++        return allowed[_owner][_spender];
++    }
+ 
+-  /// @param _owner The address of the account owning tokens
+-  /// @param _spender The address of the account able to transfer the tokens
+-  /// @return Amount of remaining tokens allowed to spent
+-  function allowance(address _owner, address _spender) constant returns (uint256 remaining) {}
++    /// @dev Returns number of tokens owned by given address.
++    /// @param _owner Address of token owner.
++    /// @return Returns balance of owner.
++    function balanceOf(address _owner)
++        constant
++        public
++        returns (uint256)
++    {
++        return balances[_owner];
++    }
++}
+ 
+-  event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-  event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-} 
+ 
+-contract SunContractToken is IERC20Token, owned{
++/// @title Gnosis token contract
++/// @author Stefan George - <stefan.george@consensys.net>
++contract GnosisToken is StandardToken {
+ 
+-  /* Public variables of the token */
+-  string public standard = "SunContract token v1.0";
+-  string public name = "SunContract";
+-  string public symbol = "SNC";
+-  uint8 public decimals = 18;
+-  address public icoContractAddress;
+-  uint256 public tokenFrozenUntilBlock;
++    /*
++     *  Token meta data
++     */
++    string constant public name = "Gnosis Token";
++    string constant public symbol = "GNO";
++    uint8 constant public decimals = 18;
+ 
+-  /* Private variables of the token */
+-  uint256 supply = 0;
+-  mapping (address => uint256) balances;
+-  mapping (address => mapping (address => uint256)) allowances;
+-  mapping (address => bool) restrictedAddresses;
+-
+-  /* Events */
+-  event Mint(address indexed _to, uint256 _value);
+-  event Burn(address indexed _from, uint256 _value);
+-  event TokenFrozen(uint256 _frozenUntilBlock, string _reason);
+-
+-  /* Initializes contract and  sets restricted addresses */
+-  function SunContractToken(address _icoAddress) {
+-    restrictedAddresses[0x0] = true;
+-    restrictedAddresses[_icoAddress] = true;
+-    restrictedAddresses[address(this)] = true;
+-    icoContractAddress = _icoAddress;
+-  }
+-
+-  /* Returns total supply of issued tokens */
+-  function totalSupply() constant returns (uint256 totalSupply) {
+-    return supply;
+-  }
+-
+-  /* Returns balance of address */
+-  function balanceOf(address _owner) constant returns (uint256 balance) {
+-    return balances[_owner];
+-  }
+-
+-  /* Transfers tokens from your address to other */
+-  function transfer(address _to, uint256 _value) returns (bool success) {
+-    if (block.number < tokenFrozenUntilBlock) throw;    // Throw if token is frozen
+-    if (restrictedAddresses[_to]) throw;                // Throw if recipient is restricted address
+-    if (balances[msg.sender] < _value) throw;           // Throw if sender has insufficient balance
+-    if (balances[_to] + _value < balances[_to]) throw;  // Throw if owerflow detected
+-    balances[msg.sender] -= _value;                     // Deduct senders balance
+-    balances[_to] += _value;                            // Add recivers blaance 
+-    Transfer(msg.sender, _to, _value);                  // Raise Transfer event
+-    return true;
+-  }
+-
+-  /* Approve other address to spend tokens on your account */
+-  function approve(address _spender, uint256 _value) returns (bool success) {
+-    if (block.number < tokenFrozenUntilBlock) throw;    // Throw if token is frozen        
+-    allowances[msg.sender][_spender] = _value;          // Set allowance         
+-    Approval(msg.sender, _spender, _value);             // Raise Approval event         
+-    return true;
+-  }
+-
+-  /* Approve and then communicate the approved contract in a single tx */ 
+-  function approveAndCall(address _spender, uint256 _value, bytes _extraData) returns (bool success) {            
+-    tokenRecipient spender = tokenRecipient(_spender);              // Cast spender to tokenRecipient contract         
+-    approve(_spender, _value);                                      // Set approval to contract for _value         
+-    spender.receiveApproval(msg.sender, _value, this, _extraData);  // Raise method on _spender contract         
+-    return true;     
+-  }     
+-
+-  /* A contract attempts to get the coins */
+-  function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {      
+-    if (block.number < tokenFrozenUntilBlock) throw;    // Throw if token is frozen
+-    if (restrictedAddresses[_to]) throw;                // Throw if recipient is restricted address  
+-    if (balances[_from] < _value) throw;                // Throw if sender does not have enough balance     
+-    if (balances[_to] + _value < balances[_to]) throw;  // Throw if overflow detected    
+-    if (_value > allowances[_from][msg.sender]) throw;  // Throw if you do not have allowance       
+-    balances[_from] -= _value;                          // Deduct senders balance    
+-    balances[_to] += _value;                            // Add recipient blaance         
+-    allowances[_from][msg.sender] -= _value;            // Deduct allowance for this address         
+-    Transfer(_from, _to, _value);                       // Raise Transfer event
+-    return true;     
+-  }         
+-
+-  /* Get the amount of allowed tokens to spend */     
+-  function allowance(address _owner, address _spender) constant returns (uint256 remaining) {         
+-    return allowances[_owner][_spender];
+-  }         
+-
+-  /* Issue new tokens */     
+-  function mintTokens(address _to, uint256 _amount) {         
+-    if (msg.sender != icoContractAddress) throw;            // Only ICO address can mint tokens        
+-    if (restrictedAddresses[_to]) throw;                    // Throw if user wants to send to restricted address       
+-    if (balances[_to] + _amount < balances[_to]) throw;     // Check for overflows
+-    supply += _amount;                                      // Update total supply
+-    balances[_to] += _amount;                               // Set minted coins to target
+-    Mint(_to, _amount);                                     // Create Mint event       
+-    Transfer(0x0, _to, _amount);                            // Create Transfer event from 0x
+-  }     
+-  
+-  /* Destroy tokens from owners account */
+-  function burnTokens(uint256 _amount) onlyOwner {
+-    if(balances[msg.sender] < _amount) throw;               // Throw if you do not have enough balance
+-    if(supply < _amount) throw;                             // Throw if overflow detected
+-
+-    supply -= _amount;                                      // Deduct totalSupply
+-    balances[msg.sender] -= _amount;                        // Destroy coins on senders wallet
+-    Burn(msg.sender, _amount);                              // Raise Burn event
+-    Transfer(msg.sender, 0x0, _amount);                     // Raise transfer to 0x0
+-  }
+-
+-  /* Stops all token transfers in case of emergency */
+-  function freezeTransfersUntil(uint256 _frozenUntilBlock, string _reason) onlyOwner {      
+-    tokenFrozenUntilBlock = _frozenUntilBlock;
+-    TokenFrozen(_frozenUntilBlock, _reason);
+-  }
+-
+-  function isRestrictedAddress(address _querryAddress) constant returns (bool answer){
+-    return restrictedAddresses[_querryAddress];
+-  }
+-
+-  //
+-  /* This part is here only for testing and will not be included into final version */
+-  //
+-
+-  //function changeICOAddress(address _newAddress) onlyOwner{
+-  //  icoContractAddress = _newAddress;
+-  //  restrictedAddresses[_newAddress] = true;   
+-  //}
+-
+-  //function killContract() onlyOwner{
+-  //  selfdestruct(msg.sender);
+-  //}
++    /*
++     *  Public functions
++     */
++    /// @dev Contract constructor function sets dutch auction contract address and assigns all tokens to dutch auction.
++    /// @param dutchAuction Address of dutch auction contract.
++    /// @param owners Array of addresses receiving preassigned tokens.
++    /// @param tokens Array of preassigned token amounts.
++    function GnosisToken(address dutchAuction, address[] owners, uint[] tokens)
++        public
++    {
++        if (dutchAuction == 0)
++            // Address should not be null.
++            throw;
++        totalSupply = 10000000 * 10**18;
++        balances[dutchAuction] = 9000000 * 10**18;
++        Transfer(0, dutchAuction, balances[dutchAuction]);
++        uint assignedTokens = balances[dutchAuction];
++        for (uint i=0; i<owners.length; i++) {
++            if (owners[i] == 0)
++                // Address should not be null.
++                throw;
++            balances[owners[i]] += tokens[i];
++            Transfer(0, owners[i], tokens[i]);
++            assignedTokens += tokens[i];
++        }
++        if (assignedTokens != totalSupply)
++            throw;
++    }
+ }

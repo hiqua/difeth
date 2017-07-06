@@ -1,0 +1,23 @@
+--- 
++++ 
+@@ -151,6 +151,11 @@
+ 			return;
+ 		}
+ 		
++		//no start found
++		if(gameStart.time == 0){
++			return;
++		}
++		
+ 		var competition = game.competitions[gameStart.competitionIndex];
+ 		
+ 		// game should not take too long to be submited
+@@ -191,6 +196,8 @@
+ 			submitBlockNumber:uint64(block.number),
+ 			version:gameStart.version
+ 		});
++		
++		gameStart.time = 0; //reset to force the need to start
+ 		
+ 	}
+ 	

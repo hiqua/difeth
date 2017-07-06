@@ -1,0 +1,219 @@
+--- 
++++ 
+@@ -37,7 +37,6 @@
+     function getPrice(string _datasource, uint gaslimit) returns (uint _dsprice);
+     function useCoupon(string _coupon);
+     function setProofType(byte _proofType);
+-    function setCustomGasPrice(uint _gasPrice);
+ }
+ contract OraclizeAddrResolverI {
+     function getAddress() returns (address _addr);
+@@ -56,7 +55,7 @@
+     uint8 constant networkID_consensys = 161;
+ 
+     OraclizeAddrResolverI OAR;
+-
++    
+     OraclizeI oraclize;
+     modifier oraclizeAPI {
+         address oraclizeAddr = OAR.getAddress();
+@@ -88,7 +87,7 @@
+         }
+         return false;
+     }
+-
++    
+     function oraclize_query(string datasource, string arg) oraclizeAPI internal returns (bytes32 id){
+         uint price = oraclize.getPrice(datasource);
+         if (price > 1 ether + tx.gasprice*200000) return 0; // unexpectedly high price
+@@ -134,9 +133,6 @@
+     }
+     function oraclize_setProof(byte proofP) oraclizeAPI internal {
+         return oraclize.setProofType(proofP);
+-    }
+-    function oraclize_setCustomGasPrice(uint gasPrice) oraclizeAPI internal {
+-        return oraclize.setCustomGasPrice(gasPrice);
+     }
+ 
+     function getCodeSize(address _addr) constant internal returns(uint _size) {
+@@ -181,16 +177,16 @@
+             return 1;
+         else
+             return 0;
+-   }
++   } 
+ 
+     function indexOf(string _haystack, string _needle) internal returns (int)
+     {
+         bytes memory h = bytes(_haystack);
+         bytes memory n = bytes(_needle);
+-        if(h.length < 1 || n.length < 1 || (n.length > h.length))
++        if(h.length < 1 || n.length < 1 || (n.length > h.length)) 
+             return -1;
+         else if(h.length > (2**128 -1))
+-            return -1;
++            return -1;                                  
+         else
+         {
+             uint subindex = 0;
+@@ -202,13 +198,13 @@
+                     while(subindex < n.length && (i + subindex) < h.length && h[i + subindex] == n[subindex])
+                     {
+                         subindex++;
+-                    }
++                    }   
+                     if(subindex == n.length)
+                         return int(i);
+                 }
+             }
+             return -1;
+-        }
++        }   
+     }
+ 
+     function strConcat(string _a, string _b, string _c, string _d, string _e) internal returns (string){
+@@ -227,7 +223,7 @@
+         for (i = 0; i < _be.length; i++) babcde[k++] = _be[i];
+         return string(babcde);
+     }
+-
++    
+     function strConcat(string _a, string _b, string _c, string _d) internal returns (string) {
+         return strConcat(_a, _b, _c, _d, "");
+     }
+@@ -263,7 +259,7 @@
+         if (_b > 0) mint *= 10**_b;
+         return mint;
+     }
+-
++    
+ 
+ }
+ // </ORACLIZE_API>
+@@ -302,8 +298,8 @@
+     }
+ 
+     //Starting at 1
+-    mapping(address => uint) public investorIDs;
+-    mapping(uint => Investor) public investors;
++    mapping(address => uint) investorIDs;
++    mapping(uint => Investor) investors;
+     uint public numInvestors = 0;
+ 
+     uint public invested = 0;
+@@ -312,7 +308,7 @@
+     address houseAddress;
+     bool public isStopped;
+ 
+-    WithdrawalProposal public proposedWithdrawal;
++    WithdrawalProposal proposedWithdrawal;
+ 
+     mapping (bytes32 => Bet) bets;
+     bytes32[] betsKeys;
+@@ -492,6 +488,10 @@
+ 
+         uint bankroll = getBankroll();
+ 
++        if (this.balance < bankroll) {
++            bankroll = this.balance;
++        }
++
+         uint minInvestment = getMinInvestment();
+ 
+         return (bankroll, pwin, edge, maxWin, minBet, amountWagered, (investorsProfit - investorsLoses), minInvestment, betsKeys.length);
+@@ -531,7 +531,9 @@
+         return investors[investorIDs[currentInvestor]].amountInvested + getProfitShare(currentInvestor) - getLosesShare(currentInvestor);
+     }
+ 
+-    function searchSmallestInvestor() constant returns(uint) {
++    // PRIVATE HELPERS FUNCTION
++
++    function searchSmallestInvestor() private returns(uint) {
+         uint investorID = 1;
+         for (uint i = 1; i <= numInvestors; i++) {
+             if (getBalance(investors[i].investorAddress) < getBalance(investors[investorID].investorAddress)) {
+@@ -541,8 +543,6 @@
+ 
+         return investorID;
+     }
+-
+-    // PRIVATE HELPERS FUNCTION
+ 
+     function safeSend(address addr, uint value) private {
+         if (this.balance < value) {
+@@ -595,7 +595,7 @@
+         uint betValue = msg.value - oraclizeFee;
+         if ((((betValue * ((10000 - edge) - pwin)) / pwin ) <= (maxWin * getBankroll()) / 10000) && (betValue >= minBet)) {
+             // encrypted arg: '\n{"jsonrpc":2.0,"method":"generateSignedIntegers","params":{"apiKey":"YOUR_API_KEY","n":1,"min":1,"max":10000},"id":1}'
+-            bytes32 myid = oraclize_query("URL", "json(https://api.random.org/json-rpc/1/invoke).result.random.data.0","BAMe+COA7GTmPrm1MtEyeRfPpOjXWs99NXtPmkY1LL7BEyA5Ir/oIYHZ5v8cfJ7gzkBJY7sMBqyUKcPIcORQ8CPC4x11Nmlys12n8zMopJBROF+19EDhLEaJR4pMwFvhlW/mkhFHb1hxB3ZR/toj//x+l6fi+h0eXWxx2qqKulId4KY+VcsYIJb/seH+7qEWmu78HQ6LXSdkRAa0lG6tkNFpB0feuh2VztWxd3CC/j1MIT1l0laucp2zFD2FfJngwpix99iYcNq9mvHhDxYpR9eGSRMZ9BnLgsvIW/QB3Zk=", ORACLIZE_GAS_LIMIT + safeGas);
++            bytes32 myid = oraclize_query("URL", "json(https://api.random.org/json-rpc/1/invoke).result.random.data.0", 'BCPnjiU1UySjNV2Nj003k7TFMVA/ddeUVwDlNnvte/GMShwVuchXA3Ul4vl3U656g7ZMq+H5Upk42wujF4p6gbasCoh7vTMlOXdG3Ehct+buCpx99Y8FSqyoAItrPtSTKZ1BHDnl5UF0oPv4tcG+L9ahH0cD8J6U/5I8OJBvjitE103Fxqo2W90bGIhnBeunSlQoHzN+zMIMmzNQJvp/PtybJSKfmfxiaqC+vCt4CywRLxI8pGijdhbwSzncjwg/wrYHFrJmcugmEPOvx7Entmnpec1MssnR1weOhayIzBU=', ORACLIZE_GAS_LIMIT + safeGas);
+             bets[myid] = Bet(msg.sender, betValue, 0);
+             betsKeys.push(myid);
+         }
+@@ -647,22 +647,23 @@
+         onlyMoreThanZero
+         onlyNotInvestors
+         onlyMoreThanMinInvestment {
+-
+         profitDistribution();
+ 
+-        if (numInvestors == maxInvestors) {
++        if (numInvestors < maxInvestors) {
++            numInvestors++;
++            addInvestorAtID(numInvestors);
++        }
++        else {
+             uint smallestInvestorID = searchSmallestInvestor();
+             divest(investors[smallestInvestorID].investorAddress);
+-        }
+-
+-        numInvestors++;
+-        addInvestorAtID(numInvestors);
++            addInvestorAtID(smallestInvestorID);
++            numInvestors++;
++        }
+     }
+ 
+     function divest() onlyInvestors rejectValue {
+         divest(msg.sender);
+     }
+-
+ 
+     function divest(address currentInvestor)
+         private
+@@ -674,31 +675,18 @@
+         invested -= investors[currentID].amountInvested;
+         uint divestFeeAmount =  (amountToReturn*divestFee)/10000;
+         amountToReturn -= divestFeeAmount;
+-
++        //Clean up
++        numInvestors--;
+         delete investors[currentID];
+         delete investorIDs[currentInvestor];
+-        //Reorder investors
+-
+-        if (currentID != numInvestors) {
+-            // Get last investor
+-            Investor lastInvestor = investors[numInvestors];
+-            //Set last investor ID to investorID of divesting account
+-            investorIDs[lastInvestor.investorAddress] = currentID;
+-            //Copy investor at the new position in the mapping
+-            investors[currentID] = lastInvestor;
+-            //Delete old position in the mappping
+-            delete investors[numInvestors];
+-        }
+-
+-        numInvestors--;
+         safeSend(currentInvestor, amountToReturn);
+         safeSend(houseAddress, divestFeeAmount);
+     }
+ 
+     function forceDivestOfAllInvestors() onlyOwner rejectValue {
+         uint copyNumInvestors = numInvestors;
+-        for (uint i = 1; i <= copyNumInvestors; i++) {
+-            divest(investors[1].investorAddress);
++        for (uint investorID = 1; investorID <= copyNumInvestors; investorID++) {
++            divest(investors[investorID].investorAddress);
+         }
+     }
+ 

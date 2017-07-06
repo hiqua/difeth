@@ -1,0 +1,45 @@
+--- 
++++ 
+@@ -1,4 +1,4 @@
+-// VERSION K
++// VERSION L
+ 
+ pragma solidity ^0.4.8;
+ 
+@@ -267,7 +267,10 @@
+ 		    }
+ 
+ 		    uint newHeld = _value + getHeld(holderAccounts[_to].tokens);
++		    if (icoStatus == IcoStatusValue.saleOpen) // avoid mcgees gambit
++		    	pidFrom = curPayoutId;
+ 		    holderAccounts[_to].tokens = newHeld | (pidFrom * (2 ** 48));
++
+ 	            Transfer(msg.sender, _to, _value);
+ 	            return true;
+ 	        } else { 
+@@ -296,7 +299,10 @@
+ 
+ 		    uint newHeld = _value + getHeld(holderAccounts[_to].tokens);
+ 
++		    if (icoStatus == IcoStatusValue.saleOpen) // avoid mcgees gambit
++		    	pidFrom = curPayoutId;
+ 		    holderAccounts[_to].tokens = newHeld | (pidFrom * (2 ** 48));
++
+ 	            allowed[_from][msg.sender] -= _value;
+ 	            Transfer(_from, _to, _value);
+ 	            return true;
+@@ -528,12 +534,12 @@
+ 			if (getNumTokensPurchased() >= minIcoTokenGoal)
+ 				nrefund -= (nrefund /10); // only 90 percent b/c 10 percent payout
+ 
++			if (!holderAccounts[developers].alloced) 
++				addAccount(developers);
+ 			holderAccounts[developers].tokens += ntokens;
+ 			holderAccounts[nrequester].tokens = 0;
+ 			if (holderAccounts[nrequester].balance > 0) {
+ 				// see above warning!!
+-				if (!holderAccounts[developers].alloced) 
+-					addAccount(developers);
+ 				holderAccounts[developers].balance += holderAccounts[nrequester].balance;
+ 				holderAccounts[nrequester].balance = 0;
+ 			}

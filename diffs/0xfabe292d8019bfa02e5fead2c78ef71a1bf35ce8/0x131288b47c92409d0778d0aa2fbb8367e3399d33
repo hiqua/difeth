@@ -1,0 +1,10 @@
+--- 
++++ 
+@@ -58,6 +58,7 @@
+ 
+         var ethValue = tokenValue / tokenCreationRate;
+         Refund(msg.sender, ethValue);
++        Transfer(msg.sender, 0x0, tokenValue);
+ 
+         if (!msg.sender.send(ethValue)) throw;
+     }

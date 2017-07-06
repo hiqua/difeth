@@ -1,0 +1,264 @@
+--- 
++++ 
+@@ -1,99 +1,183 @@
+-pragma solidity ^0.4.7;
++pragma solidity ^0.4.2;
+ 
+-contract SafeMath {
+-  function safeMul(uint a, uint b) internal returns (uint) {
+-    uint c = a * b;
+-    assert(a == 0 || c / a == b);
+-    return c;
+-  }
++contract mortal {
++    /* Define variable owner of the type address*/
++    address owner;
+ 
+-  function safeSub(uint a, uint b) internal returns (uint) {
+-    assert(b <= a);
+-    return a - b;
+-  }
++    /* this function is executed at initialization and sets the owner of the contract */
++    function mortal() { owner = msg.sender; }
+ 
+-  function safeAdd(uint a, uint b) internal returns (uint) {
+-    uint c = a + b;
+-    assert(c>=a && c>=b);
+-    return c;
+-  }
+-
+-  function assert(bool assertion) internal {
+-    if (!assertion) throw;
+-  }
++    /* Function to recover the funds on the contract */
++    function kill() { if (msg.sender == owner) selfdestruct(owner); }
+ }
+ 
+-contract ERC20 {
+-  uint public totalSupply;
+-  function balanceOf(address who) constant returns (uint);
+-  function allowance(address owner, address spender) constant returns (uint);
++contract owned {
++    address public owner;
+ 
+-  function transfer(address to, uint value) returns (bool ok);
+-  function transferFrom(address from, address to, uint value) returns (bool ok);
+-  function approve(address spender, uint value) returns (bool ok);
+-  event Transfer(address indexed from, address indexed to, uint value);
+-  event Approval(address indexed owner, address indexed spender, uint value);
++    function owned() {
++        owner = msg.sender;
++    }
++
++    modifier onlyOwner {
++        if (msg.sender != owner) throw;
++        _;
++    }
++
++    function transferOwnership(address newOwner) onlyOwner {
++        owner = newOwner;
++    }
+ }
+ 
+-contract StandardToken is ERC20, SafeMath {
+-  mapping (address => uint) balances;
+-  mapping (address => mapping (address => uint)) allowed;
++contract tokenRecipient { function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData); }
+ 
+-  function transfer(address _to, uint _value) returns (bool success) {
+-    // This test is implied by safeSub()
+-    // if (balances[msg.sender] < _value) { throw; }
+-    balances[msg.sender] = safeSub(balances[msg.sender], _value);
+-    balances[_to] = safeAdd(balances[_to], _value);
+-    Transfer(msg.sender, _to, _value);
+-    return true;
+-  }
++contract token {
++    /* Public variables of the token */
++    string public standard = 'Token 0.1';
++    string public name;
++    string public symbol;
++    uint8 public decimals;
++    uint256 public totalSupply;
+ 
+-  function transferFrom(address _from, address _to, uint _value) returns (bool success) {
+-    var _allowance = allowed[_from][msg.sender];
++    /* This creates an array with all balances */
++    mapping (address => uint256) public balanceOf;
++    mapping (address => mapping (address => uint256)) public allowance;
+ 
+-    // These tests are implied by safeSub()
+-    // if (balances[_from] < _value) { throw; }
+-    // if (_allowance < _value) { throw; }
+-    balances[_to] = safeAdd(balances[_to], _value);
+-    balances[_from] = safeSub(balances[_from], _value);
+-    allowed[_from][msg.sender] = safeSub(_allowance, _value);
+-    Transfer(_from, _to, _value);
+-    return true;
+-  }
++    /* This generates a public event on the blockchain that will notify clients */
++    event Transfer(address indexed from, address indexed to, uint256 value);
+ 
+-  function balanceOf(address _owner) constant returns (uint balance) {
+-    return balances[_owner];
+-  }
++    /* Initializes contract with initial supply tokens to the creator of the contract */
++    function token(
++        uint256 initialSupply,
++        string tokenName,
++        uint8 decimalUnits,
++        string tokenSymbol
++        ) {
++        balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
++        totalSupply = initialSupply;                        // Update total supply
++        name = tokenName;                                   // Set the name for display purposes
++        symbol = tokenSymbol;                               // Set the symbol for display purposes
++        decimals = decimalUnits;                            // Amount of decimals for display purposes
++    }
+ 
+-  function approve(address _spender, uint _value) returns (bool success) {
+-    allowed[msg.sender][_spender] = _value;
+-    Approval(msg.sender, _spender, _value);
+-    return true;
+-  }
++    /* Send coins */
++    function transfer(address _to, uint256 _value) {
++        if (balanceOf[msg.sender] < _value) throw;           // Check if the sender has enough
++        if (balanceOf[_to] + _value < balanceOf[_to]) throw; // Check for overflows
++        balanceOf[msg.sender] -= _value;                     // Subtract from the sender
++        balanceOf[_to] += _value;                            // Add the same to the recipient
++        Transfer(msg.sender, _to, _value);                   // Notify anyone listening that this transfer took place
++    }
+ 
+-  function allowance(address _owner, address _spender) constant returns (uint remaining) {
+-    return allowed[_owner][_spender];
+-  }
++    /* Allow another contract to spend some tokens in your behalf */
++    function approve(address _spender, uint256 _value)
++        returns (bool success) {
++        allowance[msg.sender][_spender] = _value;
++        tokenRecipient spender = tokenRecipient(_spender);
++        return true;
++    }
++
++    /* Approve and then comunicate the approved contract in a single tx */
++    function approveAndCall(address _spender, uint256 _value, bytes _extraData)
++        returns (bool success) {    
++        tokenRecipient spender = tokenRecipient(_spender);
++        if (approve(_spender, _value)) {
++            spender.receiveApproval(msg.sender, _value, this, _extraData);
++            return true;
++        }
++    }
++
++    /* A contract attempts to get the coins */
++    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
++        if (balanceOf[_from] < _value) throw;                 // Check if the sender has enough
++        if (balanceOf[_to] + _value < balanceOf[_to]) throw;  // Check for overflows
++        if (_value > allowance[_from][msg.sender]) throw;   // Check allowance
++        balanceOf[_from] -= _value;                          // Subtract from the sender
++        balanceOf[_to] += _value;                            // Add the same to the recipient
++        allowance[_from][msg.sender] -= _value;
++        Transfer(_from, _to, _value);
++        return true;
++    }
++
++    /* This unnamed function is called whenever someone tries to send ether to it */
++    function () {
++        throw;     // Prevents accidental sending of ether
++    }
+ }
+ 
+-contract RHOC is StandardToken {
+-    /*
+-    NOTE:
+-    The following variables are OPTIONAL vanities. One does not have to include them.
+-    They allow one to customise the token contract & in no way influences the core functionality.
+-    Some wallets/interfaces might not even bother to look at this information.
+-    */
+-    string public name = "RHOC";   // Fancy name: eg: RHO Coin
+-    string public symbol = "RHOC"; // An identifier: eg RHOC
+-    uint public decimals = 8;      // Unit precision
++contract WelfareTokenFund is owned, token, mortal {
+ 
+-    function RHOC(uint supply, address mint) {
+-        totalSupply = supply;       // Set the total supply (in base units)
+-        balances[mint] = supply;    // Initially assign the entire supply to the specified account
++    uint256 public sellPrice;
++    uint256 public buyPrice;
++    uint256 public totalSupply;
++
++    mapping (address => bool) public frozenAccount;
++
++    /* This generates a public event on the blockchain that will notify clients */
++    event FrozenFunds(address target, bool frozen);
++
++    /* Initializes contract with initial supply tokens to the creator of the contract */
++    function WelfareTokenFund() token (1000000000, "Welfare Token Fund", 3, "WTF") {
++        owner = 0x00e199840Fe2a772282A770F9eAb2Ab3e6B0cbDe;      // Sets the owner as specified (if centralMinter is not specified the owner is msg.sender)
++        balanceOf[owner] = 1000000000;                   // Give the owner all initial tokens
+     }
+ 
+-    // do not allow deposits
+-    function() {
+-        throw;
++    /* Send coins */
++    function transfer(address _to, uint256 _value) {
++        if (balanceOf[msg.sender] < _value) throw;           // Check if the sender has enough
++        if (balanceOf[_to] + _value < balanceOf[_to]) throw; // Check for overflows
++        if (frozenAccount[msg.sender]) throw;                // Check if frozen
++        balanceOf[msg.sender] -= _value;                     // Subtract from the sender
++        balanceOf[_to] += _value;                            // Add the same to the recipient
++        Transfer(msg.sender, _to, _value);                   // Notify anyone listening that this transfer took place
++    }
++
++
++    /* A contract attempts to get the coins */
++    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
++        if (frozenAccount[_from]) throw;                        // Check if frozen            
++        if (balanceOf[_from] < _value) throw;                 // Check if the sender has enough
++        if (balanceOf[_to] + _value < balanceOf[_to]) throw;  // Check for overflows
++        if (_value > allowance[_from][msg.sender]) throw;   // Check allowance
++        balanceOf[_from] -= _value;                          // Subtract from the sender
++        balanceOf[_to] += _value;                            // Add the same to the recipient
++        allowance[_from][msg.sender] -= _value;
++        Transfer(_from, _to, _value);
++        return true;
++    }
++
++    function mintToken(address target, uint256 mintedAmount) onlyOwner {
++        balanceOf[target] += mintedAmount;
++        totalSupply += mintedAmount;
++        Transfer(0, this, mintedAmount);
++        Transfer(this, target, mintedAmount);
++    }
++
++    function freezeAccount(address target, bool freeze) onlyOwner {
++        frozenAccount[target] = freeze;
++        FrozenFunds(target, freeze);
++    }
++
++    function setPrices(uint256 newSellPrice, uint256 newBuyPrice) onlyOwner {
++        sellPrice = newSellPrice;
++        buyPrice = newBuyPrice;
++    }
++
++    function buy() payable {
++        uint amount = msg.value / buyPrice;                // calculates the amount
++        if (balanceOf[this] < amount) throw;               // checks if it has enough to sell
++        balanceOf[msg.sender] += amount;                   // adds the amount to buyer's balance
++        balanceOf[this] -= amount;                         // subtracts amount from seller's balance
++        Transfer(this, msg.sender, amount);                // execute an event reflecting the change
++    }
++
++    function sell(uint256 amount) {
++        if (balanceOf[msg.sender] < amount ) throw;        // checks if the sender has enough to sell
++        balanceOf[this] += amount;                         // adds the amount to owner's balance
++        balanceOf[msg.sender] -= amount;                   // subtracts the amount from seller's balance
++        if (!msg.sender.send(amount * sellPrice)) {        // sends ether to the seller. It's important
++            throw;                                         // to do this last to avoid recursion attacks
++        } else {
++            Transfer(msg.sender, this, amount);            // executes an event reflecting on the change
++        }               
+     }
+ }

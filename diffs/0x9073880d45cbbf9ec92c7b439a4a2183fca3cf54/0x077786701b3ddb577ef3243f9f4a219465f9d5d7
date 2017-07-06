@@ -1,0 +1,114 @@
+--- 
++++ 
+@@ -27,7 +27,7 @@
+    * @param decimals - how many decimal units the token has
+    * @return Amount of tokens the investor receives
+    */
+-  function calculatePrice(uint value, uint tokensSold, uint weiRaised, address msgSender, uint decimals) public constant returns (uint tokenAmount);
++  function calculatePrice(uint value, uint weiRaised, uint tokensSold, address msgSender, uint decimals) public constant returns (uint tokenAmount);
+ }
+ 
+ 
+@@ -57,7 +57,7 @@
+ 
+   function plus(uint a, uint b) returns (uint) {
+     uint c = a + b;
+-    assert(c>=a && c>=b);
++    assert(c>=a);
+     return c;
+   }
+ 
+@@ -203,6 +203,9 @@
+  *
+  */
+ contract Crowdsale is Haltable {
++
++  /* Max investment count when we are still allowed to change the multisig address */
++  uint public MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE = 5;
+ 
+   using SafeMathLib for uint;
+ 
+@@ -385,7 +388,7 @@
+     tokensSold = tokensSold.plus(tokenAmount);
+ 
+     // Check that we did not bust the cap
+-    if(isBreakingCap(tokenAmount, weiAmount, weiRaised, tokensSold)) {
++    if(isBreakingCap(weiAmount, tokenAmount, weiRaised, tokensSold)) {
+       throw;
+     }
+ 
+@@ -416,7 +419,7 @@
+   function preallocate(address receiver, uint fullTokens, uint weiPrice) public onlyOwner {
+ 
+     uint tokenAmount = fullTokens * 10**token.decimals();
+-    uint weiAmount = weiPrice * tokenAmount; // This can be also 0, we give out tokens for free
++    uint weiAmount = weiPrice * fullTokens; // This can be also 0, we give out tokens for free
+ 
+     weiRaised = weiRaised.plus(weiAmount);
+     tokensSold = tokensSold.plus(tokenAmount);
+@@ -580,6 +583,23 @@
+     if(!pricingStrategy.isPricingStrategy()) {
+       throw;
+     }
++  }
++
++  /**
++   * Allow to change the team multisig address in the case of emergency.
++   *
++   * This allows to save a deployed crowdsale wallet in the case the crowdsale has not yet begun
++   * (we have done only few test transactions). After the crowdsale is going
++   * then multisig address stays locked for the safety reasons.
++   */
++  function setMultisig(address addr) public onlyOwner {
++
++    // Change
++    if(investorCount > MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE) {
++      throw;
++    }
++
++    multisigWallet = addr;
+   }
+ 
+   /**
+@@ -609,6 +629,20 @@
+    */
+   function isMinimumGoalReached() public constant returns (bool reached) {
+     return weiRaised >= minimumFundingGoal;
++  }
++
++  /**
++   * Check if the contract relationship looks good.
++   */
++  function isFinalizerSane() public constant returns (bool sane) {
++    return finalizeAgent.isSane();
++  }
++
++  /**
++   * Check if the contract relationship looks good.
++   */
++  function isPricingSane() public constant returns (bool sane) {
++    return pricingStrategy.isSane(address(this));
+   }
+ 
+   /**
+@@ -633,6 +667,11 @@
+     ownerTestValue = val;
+   }
+ 
++  /** Interface marker. */
++  function isCrowdsale() public constant returns (bool) {
++    return true;
++  }
++
+   //
+   // Modifiers
+   //
+@@ -809,7 +848,7 @@
+   }
+ 
+   /// @dev Calculate the current price for buy in amount.
+-  function calculatePrice(uint value, uint tokensSold, uint weiRaised, address msgSender, uint decimals) public constant returns (uint) {
++  function calculatePrice(uint value, uint weiRaised, uint tokensSold, address msgSender, uint decimals) public constant returns (uint) {
+ 
+     uint multiplier = 10 ** decimals;
+ 

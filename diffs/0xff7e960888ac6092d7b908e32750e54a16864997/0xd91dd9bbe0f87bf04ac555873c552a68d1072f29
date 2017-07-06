@@ -1,0 +1,179 @@
+--- 
++++ 
+@@ -77,13 +77,7 @@
+  */
+ contract StandardToken is ERC20, SafeMath {
+ 
+-  /* Token supply got increased and a new owner received these tokens */
+-  event Minted(address receiver, uint amount);
+-
+-  /* Actual balances of token holders */
+   mapping(address => uint) balances;
+-
+-  /* approve() allowances */
+   mapping (address => mapping (address => uint)) allowed;
+ 
+   /**
+@@ -93,7 +87,7 @@
+    * http://vessenes.com/the-erc20-short-address-attack-explained/
+    */
+   modifier onlyPayloadSize(uint size) {
+-     if(msg.data.length != size + 4) {
++     if(msg.data.length < size + 4) {
+        throw;
+      }
+      _;
+@@ -106,8 +100,8 @@
+     return true;
+   }
+ 
+-  function transferFrom(address _from, address _to, uint _value) returns (bool success) {
+-    uint _allowance = allowed[_from][msg.sender];
++  function transferFrom(address _from, address _to, uint _value) onlyPayloadSize(3 * 32) returns (bool success) {
++    var _allowance = allowed[_from][msg.sender];
+ 
+     // Check is not needed because safeSub(_allowance, _value) will already throw if this condition is not met
+     // if (_value > _allowance) throw;
+@@ -147,11 +141,10 @@
+    *
+    */
+   function addApproval(address _spender, uint _addedValue)
+-  onlyPayloadSize(2 * 32)
++  onlyPayloadSize(2)
+   returns (bool success) {
+       uint oldValue = allowed[msg.sender][_spender];
+       allowed[msg.sender][_spender] = safeAdd(oldValue, _addedValue);
+-      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
+       return true;
+   }
+ 
+@@ -161,7 +154,7 @@
+    * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+    */
+   function subApproval(address _spender, uint _subtractedValue)
+-  onlyPayloadSize(2 * 32)
++  onlyPayloadSize(2)
+   returns (bool success) {
+ 
+       uint oldVal = allowed[msg.sender][_spender];
+@@ -171,34 +164,10 @@
+       } else {
+           allowed[msg.sender][_spender] = safeSub(oldVal, _subtractedValue);
+       }
+-      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
+       return true;
+   }
+ 
+ }
+-
+-
+-
+-contract BurnableToken is StandardToken {
+-
+-  address public constant BURN_ADDRESS = 0;
+-
+-  /** How many tokens we burned */
+-  event Burned(address burner, uint burnedAmount);
+-
+-  /**
+-   * Burn extra tokens from a balance.
+-   *
+-   */
+-  function burn(uint burnAmount) {
+-    address burner = msg.sender;
+-    balances[burner] = safeSub(balances[burner], burnAmount);
+-    totalSupply = safeSub(totalSupply, burnAmount);
+-    Burned(burner, burnAmount);
+-  }
+-}
+-
+-
+ 
+ 
+ 
+@@ -496,7 +465,7 @@
+ 
+   function plus(uint a, uint b) returns (uint) {
+     uint c = a + b;
+-    assert(c>=a);
++    assert(c>=a && c>=b);
+     return c;
+   }
+ 
+@@ -522,8 +491,6 @@
+ 
+   /** List of agents that are allowed to create new tokens */
+   mapping (address => bool) public mintAgents;
+-
+-  event MintingAgentChanged(address addr, bool state  );
+ 
+   /**
+    * Create new tokens and allocate them to an address..
+@@ -541,7 +508,6 @@
+    */
+   function setMintAgent(address addr, bool state) onlyOwner canMint public {
+     mintAgents[addr] = state;
+-    MintingAgentChanged(addr, state);
+   }
+ 
+   modifier onlyMintAgent() {
+@@ -585,14 +551,8 @@
+    * Construct the token.
+    *
+    * This token must be created through a team multisig wallet, so that it is owned by that wallet.
+-   *
+-   * @param _name Token name
+-   * @param _symbol Token symbol - should be all caps
+-   * @param _initialSupply How many tokens we start with
+-   * @param _decimals Number of decimal places
+-   * @param _mintable Are new tokens created over the crowdsale or do we distribute only the initial supply? Note that when the token becomes transferable the minting always ends.
+-   */
+-  function CrowdsaleToken(string _name, string _symbol, uint _initialSupply, uint _decimals, bool _mintable)
++   */
++  function CrowdsaleToken(string _name, string _symbol, uint _initialSupply, uint _decimals)
+     UpgradeableToken(msg.sender) {
+ 
+     // Create any address, can be transferred
+@@ -609,18 +569,6 @@
+ 
+     // Create initially all balance on the team multisig
+     balances[owner] = totalSupply;
+-
+-    if(totalSupply > 0) {
+-      Minted(owner, totalSupply);
+-    }
+-
+-    // No more new supply allowed after the token creation
+-    if(!_mintable) {
+-      mintingFinished = true;
+-      if(totalSupply == 0) {
+-        throw; // Cannot create a token without supply and no minting
+-      }
+-    }
+   }
+ 
+   /**
+@@ -635,20 +583,7 @@
+    * Allow upgrade agent functionality kick in only if the crowdsale was success.
+    */
+   function canUpgrade() public constant returns(bool) {
+-    return released && super.canUpgrade();
+-  }
+-
+-}
+-
+-
+-/**
+- * A crowdsaled token that you can also burn.
+- *
+- */
+-contract BurnableCrowdsaleToken is BurnableToken, CrowdsaleToken {
+-
+-  function BurnableCrowdsaleToken(string _name, string _symbol, uint _initialSupply, uint _decimals, bool _mintable)
+-    CrowdsaleToken(_name, _symbol, _initialSupply, _decimals, _mintable) {
+-
+-  }
++    return released;
++  }
++
+ }

@@ -1,0 +1,393 @@
+--- 
++++ 
+@@ -1,273 +1,146 @@
+-contract IProxyManagement { 
+-    function isProxyLegit(address _address) returns (bool){}
+-    function raiseTransferEvent(address _from, address _to, uint _ammount){}
+-    function raiseApprovalEvent(address _sender,address _spender,uint _value){}
+-    function dedicatedProxyAddress() constant returns (address contractAddress){}
++pragma solidity ^0.4.11;
++
++
++/*
++ * Ownable
++ *
++ * Base contract with an owner.
++ * Provides onlyOwner modifier, which prevents function from running if it is called by anyone other than the owner.
++ */
++contract Ownable {
++  address public owner;
++
++  function Ownable() {
++    owner = msg.sender;
++  }
++
++  modifier onlyOwner() {
++    if (msg.sender != owner) {
++      throw;
++    }
++    _;
++  }
++
++  function transferOwnership(address newOwner) onlyOwner {
++    if (newOwner != address(0)) {
++      owner = newOwner;
++    }
++  }
++
+ }
+ 
+-contract ITokenRecipient { 
+-	function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData); 
+-}
+ 
+-contract IFundManagement {
+-	function fundsCombinedValue() constant returns (uint value){}
+-    function getFundAlterations() returns (uint alterations){}
+-}
++contract splitterContract is Ownable{
+ 
+-contract IERC20Token {
++    event ev(string msg, address whom, uint256 val);
+ 
+-    function totalSupply() constant returns (uint256 supply);
+-    function balanceOf(address _owner) constant returns (uint256 balance);
+-    function transfer(address _to, uint256 _value) returns (bool success);
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
+-    function approve(address _spender, uint256 _value) returns (bool success);
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining);
+-
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-}
+-
+-contract MacroTokenContract{
+-    
+-    address public dev;
+-    address public curator;
+-    address public mintingContractAddress;
+-    address public destructionContractAddress;
+-    uint256 public totalSupply = 0;
+-    bool public lockdown = false;
+-
+-    string public standard = 'Macro token';
+-    string public name = 'Macro';
+-    string public symbol = 'MCR';
+-    uint8 public decimals = 8;
+-
+-    mapping (address => uint256) balances;
+-    mapping (address => mapping (address => uint256)) allowed;
+-    IProxyManagement proxyManagementContract;
+-    IFundManagement fundManagementContract;
+-
+-    uint public weiForMcr;
+-    uint public mcrAmmountForGas;
+-
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-    event Mint(address _destination, uint _amount);
+-    event Destroy(address _destination, uint _amount);
+-    event McrForGasFailed(address _failedAddress, uint _ammount);
+-
+-    function MacroTokenContract() { 
+-        dev = msg.sender;
+-    }
+-    
+-    function balanceOf(address _owner) constant returns (uint256 balance) {
+-        return balances[_owner];
++    struct xRec {
++        bool inList;
++        address next;
++        address prev;
++        uint256 val;
+     }
+ 
+-    function transfer(address _to, uint256 _value) returns (bool success){
+-        if(balances[msg.sender] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(lockdown) throw;
++    struct l8r {
++        address whom;
++        uint256 val;
++    }
++    address public myAddress = this;
++    address public first;
++    address public last;
++    address public ddf;
++    bool    public thinkMode;
++    uint256 public pos;
+ 
+-        balances[msg.sender] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, msg.sender, _to, _value);              
+-        return true;
+-    }
++    mapping (address => xRec) public theList;
+ 
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+-        if(balances[_from] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(_value > allowed[_from][msg.sender]) throw;
+-        if(lockdown) throw;
++    l8r[]  afterParty;
+ 
+-        balances[_from] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, _from, _to, _value);
+-        allowed[_from][msg.sender] -= _value;
+-        return true;
+-    }
+-
+-    function approve(address _spender, uint256 _value) returns (bool success) {
+-        if(lockdown) throw;
+-        
+-        allowed[msg.sender][_spender] = _value;
+-        createApprovalEvent(true, msg.sender, _spender, _value);
+-        return true;
+-    }
+-
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
+-      return allowed[_owner][_spender];
+-    }
+-
+-    function transferViaProxy(address _source, address _to, uint256 _amount) returns (bool success){
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_source] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-
+-        balances[_source] -= _amount;
+-        balances[_to] += _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
+-    }
+-    
+-    function transferFromViaProxy(address _source, address _from, address _to, uint256 _amount) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_from] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-        if (_amount > allowed[_from][_source]) throw;
+-
+-        balances[_from] -= _amount;
+-        balances[_to] += _amount;
+-        allowed[_from][_source] -= _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
+-    }
+-    
+-    function approveViaProxy(address _source, address _spender, uint256 _value) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if(lockdown) throw;
+-        
+-        allowed[_source][_spender] = _value;
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createApprovalEvent(false, _source, _spender, _value);
+-        }else{
+-            createApprovalEvent(true, _source, _spender, _value);
+-        }
+-        return true;
+-    }
+-
+-    function mint(address _destination, uint _amount) returns (bool success){
+-        if (msg.sender != mintingContractAddress) throw;
+-        if(balances[_destination] + _amount < balances[_destination]) throw;
+-        if(totalSupply + _amount < totalSupply) throw;
+-
+-        totalSupply += _amount;
+-        balances[_destination] += _amount;
+-        Mint(_destination, _amount);
+-        createTransferEvent(true, 0x0, _destination, _amount);
+-        return true;
+-    }
+-
+-    function destroy(address _destination, uint _amount) returns (bool success) {
+-        if (msg.sender != destructionContractAddress) throw;
+-        if (balances[_destination] < _amount) throw;
+-
+-        totalSupply -= _amount;
+-        balances[_destination] -= _amount;
+-        Destroy(_destination, _amount);
+-        createTransferEvent(true, _destination, 0x0, _amount);
+-        return true;
+-    }
+-
+-    function setTokenCurator(address _curatorAddress){
+-        if( msg.sender != dev) throw;
+-        curator = _curatorAddress;
+-    }
+-    
+-    function setMintingContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        mintingContractAddress = _contractAddress;
+-    }
+-
+-    function setDescrutionContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        destructionContractAddress = _contractAddress;
+-    }
+-
+-    function setProxyManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        proxyManagementContract = IProxyManagement(_contractAddress);
+-    }
+-
+-    function setFundManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        fundManagementContract = IFundManagement(_contractAddress);
+-    }
+-
+-    function emergencyLock() {
+-        if (msg.sender != curator && msg.sender != dev) throw;
+-        
+-        lockdown = !lockdown;
+-    }
+-
+-    function killContract(){
+-        if (msg.sender != dev) throw;
+-        selfdestruct(dev);
+-    }
+-
+-    function setWeiForMcr(uint _value){
+-        if (msg.sender != curator) throw;
+-        weiForMcr = _value;
+-    }
+-    
+-    function setMcrAmountForGas(uint _value){
+-        if (msg.sender != curator) throw;
+-        mcrAmmountForGas = _value;
+-    }
+-
+-    function getGasForMcr(){
+-        if (balances[msg.sender] < mcrAmmountForGas) throw;
+-        if (balances[curator] > balances[curator] + mcrAmmountForGas) throw;
+-        if (this.balance < weiForMcr * mcrAmmountForGas) throw;
+-
+-        balances[msg.sender] -= mcrAmmountForGas;
+-        balances[curator] += mcrAmmountForGas;
+-        createTransferEvent(true, msg.sender, curator, weiForMcr * mcrAmmountForGas);
+-        if (!msg.sender.send(weiForMcr * mcrAmmountForGas)) {
+-            McrForGasFailed(msg.sender, weiForMcr * mcrAmmountForGas);
++    modifier onlyMeOrDDF() {
++        if (msg.sender == ddf || msg.sender == myAddress || msg.sender == owner) {
++            _;
++            return;
+         }
+     }
+ 
+-    function fundManagementAddress() constant returns (address fundManagementAddress){
+-        return address(fundManagementContract);
++    function setDDF(address ddf_) onlyOwner {
++        ddf = ddf_;
+     }
+ 
+-    function proxyManagementAddress() constant returns (address proxyManagementAddress){
+-        return address(proxyManagementContract);
++    function splitterContract(address seed, uint256 seedVal) {
++        first = seed;
++        last = seed;
++        theList[seed] = xRec(true,0x0,0x0,seedVal);
+     }
+ 
+-    function fundsCombinedValue() constant returns (uint value){
+-        return fundManagementContract.fundsCombinedValue();
++    function startThinking() onlyOwner {
++        thinkMode = true;
++        pos = 0;
+     }
+ 
+-    function getGasForMcrData() constant returns (uint, uint){
+-        return (weiForMcr, mcrAmmountForGas);
++    function stopThinking(uint256 num) onlyOwner {
++        thinkMode = false;
++        for (uint256 i = 0; i < num; i++) {
++            if (pos >= afterParty.length) {
++                delete afterParty;
++                return;
++            }
++            update(afterParty[pos].whom,afterParty[pos].val);
++            pos++;
++        }
++        thinkMode = true;
++    } 
++
++    function thinkLength() constant returns (uint256) {
++        return afterParty.length;
+     }
+ 
+-    function approveAndCall(address _spender, uint256 _value, bytes _extraData) returns (bool success) {
+-        allowed[msg.sender][_spender] = _value;
+-        ITokenRecipient spender = ITokenRecipient(_spender);
+-        spender.receiveApproval(msg.sender, _value, this, _extraData);
+-        return true;
++    function addRec4L8R(address whom, uint256 val) internal {
++        afterParty.push(l8r(whom,val));
+     }
+ 
+-    function createTransferEvent(bool _relayEvent, address _from, address _to, uint256 _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseTransferEvent(_from, _to, _value);
+-        }
+-        Transfer(_from, _to, _value);
++    function add(address whom, uint256 value) internal {
++        theList[whom] = xRec(true,0x0,last,value);
++        theList[last].next = whom;
++        last = whom;
++        ev("add",whom,value);
+     }
+ 
+-    function createApprovalEvent(bool _relayEvent, address _sender, address _spender, uint _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseApprovalEvent(_sender, _spender, _value);
++    function remove(address whom) internal {
++        if (first == whom) {
++            first = theList[whom].next;
++            theList[whom] = xRec(false,0x0,0x0,0);
++            return;
+         }
+-        Approval(_sender, _spender, _value);
++        address next = theList[whom].next;
++        address prev = theList[whom].prev;
++        if (prev != 0x0) {
++            theList[prev].next = next;
++        }
++        if (next != 0x0) {
++            theList[next].prev = prev;
++        }
++        theList[whom] = xRec(false,0x0,0x0,0);
++        ev("remove",whom,0);
+     }
+-    
+-    function fillContract() payable{
+-        if (msg.sender != curator) throw;
++
++    function update(address whom, uint256 value) onlyMeOrDDF {
++        if (thinkMode) {
++            addRec4L8R(whom,value);
++            return;
++        }
++        if (value != 0) {
++            if (!theList[whom].inList) {
++                add(whom,value);
++            } else {
++                theList[whom].val = value;
++                ev("update",whom,value);
++            }
++            return;
++        }
++        if (theList[whom].inList) {
++                remove(whom);
++        }
+     }
++
+ }

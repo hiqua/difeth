@@ -1,0 +1,398 @@
+--- 
++++ 
+@@ -1,273 +1,140 @@
+-contract IProxyManagement { 
+-    function isProxyLegit(address _address) returns (bool){}
+-    function raiseTransferEvent(address _from, address _to, uint _ammount){}
+-    function raiseApprovalEvent(address _sender,address _spender,uint _value){}
+-    function dedicatedProxyAddress() constant returns (address contractAddress){}
++pragma solidity ^0.4.11;
++
++contract ERC20 {
++  function transfer(address _to, uint _value);
++  function balanceOf(address _owner) constant returns (uint balance);
+ }
+ 
+-contract ITokenRecipient { 
+-	function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData); 
+-}
++contract IOU {
++  // Store the amount of IOUs purchased by a buyer
++  mapping (address => uint256) public iou_purchased;
+ 
+-contract IFundManagement {
+-	function fundsCombinedValue() constant returns (uint value){}
+-    function getFundAlterations() returns (uint alterations){}
+-}
++  // Store the amount of ETH sent in by a buyer
++  mapping (address => uint256) public eth_sent;
+ 
+-contract IERC20Token {
++  // Total IOUs available to sell
++  uint256 public total_iou_available = 20000000000000000000;
+ 
+-    function totalSupply() constant returns (uint256 supply);
+-    function balanceOf(address _owner) constant returns (uint256 balance);
+-    function transfer(address _to, uint256 _value) returns (bool success);
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
+-    function approve(address _spender, uint256 _value) returns (bool success);
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining);
++  // Total IOUs purchased by all buyers
++  uint256 public total_iou_purchased;
+ 
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-}
++  //  BAT token contract address (IOU offering)
++  ERC20 public token = ERC20(0x0D8775F648430679A709E98d2b0Cb6250d2887EF);
+ 
+-contract MacroTokenContract{
+-    
+-    address public dev;
+-    address public curator;
+-    address public mintingContractAddress;
+-    address public destructionContractAddress;
+-    uint256 public totalSupply = 0;
+-    bool public lockdown = false;
++  // The seller's address (to receive ETH upon distribution, and for auth withdrawTokens())
++  address seller = 0x00203F5b27CB688a402fBDBdd2EaF8542ffF72B6;
+ 
+-    string public standard = 'Macro token';
+-    string public name = 'Macro';
+-    string public symbol = 'MCR';
+-    uint8 public decimals = 8;
++  // Safety to withdraw all tokens back to seller in the event any get stranded
++  function withdrawTokens() {
++    if(msg.sender != seller) throw;
++    token.transfer(seller, token.balanceOf(address(this)));
++  }
+ 
+-    mapping (address => uint256) balances;
+-    mapping (address => mapping (address => uint256)) allowed;
+-    IProxyManagement proxyManagementContract;
+-    IFundManagement fundManagementContract;
++  function withdrawEth() {
++    if(msg.sender != seller) throw;
++    msg.sender.transfer(this.balance);
++  }
+ 
+-    uint public weiForMcr;
+-    uint public mcrAmmountForGas;
++  function killya() {
++    if(msg.sender != seller) throw;
++    selfdestruct(seller);
++  }
+ 
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-    event Mint(address _destination, uint _amount);
+-    event Destroy(address _destination, uint _amount);
+-    event McrForGasFailed(address _failedAddress, uint _ammount);
++  function withdraw() payable {
++    /*
++      Main mechanism to ensure a buyer's purchase/ETH/IOU is safe.
+ 
+-    function MacroTokenContract() { 
+-        dev = msg.sender;
+-    }
+-    
+-    function balanceOf(address _owner) constant returns (uint256 balance) {
+-        return balances[_owner];
++      Refund the buyer's ETH if we're beyond the date of our distribution
++      promise AND if the contract doesn't have an adequate amount of tokens
++      to distribute to the buyer. If we're beyond the given date, yet there
++      is an adequate amount of tokens in the contract's balance, then the
++      buyer can withdraw accordingly. This allows buyers to withdraw well
++      into the future if they need to. It also allows us to extend the sale.
++      Time-sensitive ETH protection is only applicable if the contract
++      doesn't have adequate tokens for the buyer.
++
++      The "adequacy" check prevents the seller and/or third party attacker
++      from locking down buyers' ETH. i.e. The attacker sends 1 token into our
++      contract to falsely signal that the contract has been filled and is ready
++      for token distribution. If we simply check for a >0 token balance, we risk
++      distribution errors AND stranding/locking the buyer's ETH.
++
++      TODO: confirm there are no logical errors that will allow a buyer/attacker to
++            withdraw ETH early/unauthorized/doubly/etc
++    */
++    if(block.number > 3943365 && iou_purchased[msg.sender] > token.balanceOf(address(this))) {
++      // We didn't fulfill our promise to have adequate tokens withdrawable at xx time.
++      // Refund the buyer's ETH automatically instead.
++      uint256 eth_to_refund = eth_sent[msg.sender];
++
++      // If the user doesn't have any ETH or tokens to withdraw, get out ASAP
++      if(eth_to_refund == 0 || iou_purchased[msg.sender] == 0) throw;
++
++      // Adjust total accurately in the event we allow purchases in the future
++      total_iou_purchased -= iou_purchased[msg.sender];
++
++      // Clear record of buyer's ETH and IOU balance before refunding
++      eth_sent[msg.sender] = 0;
++      iou_purchased[msg.sender] = 0;
++
++      msg.sender.transfer(eth_to_refund);
++      return; // ?
+     }
+ 
+-    function transfer(address _to, uint256 _value) returns (bool success){
+-        if(balances[msg.sender] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(lockdown) throw;
++    /*
++      At this point, we are still before our distribution date promise.
++      Check if there is an adequate amount of tokens in the contract yet
++      and allow buyer's token withdrawal and seller's ETH distribution if so.
+ 
+-        balances[msg.sender] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, msg.sender, _to, _value);              
+-        return true;
++      TODO: confirm there are no logical errors that will allow a buyer/attacker to
++            withdraw IOU tokens early/unauthorized/doubly/etc
++    */
++    if(token.balanceOf(address(this)) == 0 || iou_purchased[msg.sender] > token.balanceOf(address(this))) throw;
++
++    uint256 iou_to_withdraw = iou_purchased[msg.sender];
++    uint256 eth_to_release = eth_sent[msg.sender];
++
++    // If the user doesn't have any IOUs or ETH to withdraw/release, get out ASAP
++    if(iou_to_withdraw == 0 || eth_to_release == 0) throw;
++
++    // Clear record of buyer's IOU and ETH balance before transferring out
++    iou_purchased[msg.sender] = 0;
++    eth_sent[msg.sender] = 0;
++
++    // Distribute tokens to the buyer
++    token.transfer(msg.sender, iou_to_withdraw);
++
++    // Release buyer's ETH to the seller
++    seller.transfer(eth_to_release);
++  }
++
++  function purchase() payable {
++    // Check for pre-determined sale start time
++    //if(block.number < 3960990) throw;
++    // Check if sale window is still open or not (date of promised distribution - grace?)
++    //if(block.number > 3990990) throw;
++
++    // Determine amount of tokens user wants to/can buy
++    uint256 iou_to_purchase = 8600 * msg.value; // price is 8600 per ETH
++
++    // Check if we have enough IOUs left to sell
++    if((total_iou_purchased + iou_to_purchase) > total_iou_available) throw;
++
++    // Update the amount of IOUs purchased by user. Also keep track of the total ETH they sent in
++    iou_purchased[msg.sender] += iou_to_purchase;
++    eth_sent[msg.sender] += msg.value;
++
++    // Update the total amount of IOUs purchased by all buyers
++    total_iou_purchased += iou_to_purchase;
++  }
++
++  // Fallback function/entry point
++  function () payable {
++    if(msg.value == 0) { // If the user sent a 0 ETH transaction, withdraw()
++      withdraw();
+     }
+-
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+-        if(balances[_from] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(_value > allowed[_from][msg.sender]) throw;
+-        if(lockdown) throw;
+-
+-        balances[_from] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, _from, _to, _value);
+-        allowed[_from][msg.sender] -= _value;
+-        return true;
++    else { // If the user sent ETH, purchase IOU
++      purchase();
+     }
+-
+-    function approve(address _spender, uint256 _value) returns (bool success) {
+-        if(lockdown) throw;
+-        
+-        allowed[msg.sender][_spender] = _value;
+-        createApprovalEvent(true, msg.sender, _spender, _value);
+-        return true;
+-    }
+-
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
+-      return allowed[_owner][_spender];
+-    }
+-
+-    function transferViaProxy(address _source, address _to, uint256 _amount) returns (bool success){
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_source] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-
+-        balances[_source] -= _amount;
+-        balances[_to] += _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
+-    }
+-    
+-    function transferFromViaProxy(address _source, address _from, address _to, uint256 _amount) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_from] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-        if (_amount > allowed[_from][_source]) throw;
+-
+-        balances[_from] -= _amount;
+-        balances[_to] += _amount;
+-        allowed[_from][_source] -= _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
+-    }
+-    
+-    function approveViaProxy(address _source, address _spender, uint256 _value) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if(lockdown) throw;
+-        
+-        allowed[_source][_spender] = _value;
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createApprovalEvent(false, _source, _spender, _value);
+-        }else{
+-            createApprovalEvent(true, _source, _spender, _value);
+-        }
+-        return true;
+-    }
+-
+-    function mint(address _destination, uint _amount) returns (bool success){
+-        if (msg.sender != mintingContractAddress) throw;
+-        if(balances[_destination] + _amount < balances[_destination]) throw;
+-        if(totalSupply + _amount < totalSupply) throw;
+-
+-        totalSupply += _amount;
+-        balances[_destination] += _amount;
+-        Mint(_destination, _amount);
+-        createTransferEvent(true, 0x0, _destination, _amount);
+-        return true;
+-    }
+-
+-    function destroy(address _destination, uint _amount) returns (bool success) {
+-        if (msg.sender != destructionContractAddress) throw;
+-        if (balances[_destination] < _amount) throw;
+-
+-        totalSupply -= _amount;
+-        balances[_destination] -= _amount;
+-        Destroy(_destination, _amount);
+-        createTransferEvent(true, _destination, 0x0, _amount);
+-        return true;
+-    }
+-
+-    function setTokenCurator(address _curatorAddress){
+-        if( msg.sender != dev) throw;
+-        curator = _curatorAddress;
+-    }
+-    
+-    function setMintingContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        mintingContractAddress = _contractAddress;
+-    }
+-
+-    function setDescrutionContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        destructionContractAddress = _contractAddress;
+-    }
+-
+-    function setProxyManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        proxyManagementContract = IProxyManagement(_contractAddress);
+-    }
+-
+-    function setFundManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        fundManagementContract = IFundManagement(_contractAddress);
+-    }
+-
+-    function emergencyLock() {
+-        if (msg.sender != curator && msg.sender != dev) throw;
+-        
+-        lockdown = !lockdown;
+-    }
+-
+-    function killContract(){
+-        if (msg.sender != dev) throw;
+-        selfdestruct(dev);
+-    }
+-
+-    function setWeiForMcr(uint _value){
+-        if (msg.sender != curator) throw;
+-        weiForMcr = _value;
+-    }
+-    
+-    function setMcrAmountForGas(uint _value){
+-        if (msg.sender != curator) throw;
+-        mcrAmmountForGas = _value;
+-    }
+-
+-    function getGasForMcr(){
+-        if (balances[msg.sender] < mcrAmmountForGas) throw;
+-        if (balances[curator] > balances[curator] + mcrAmmountForGas) throw;
+-        if (this.balance < weiForMcr * mcrAmmountForGas) throw;
+-
+-        balances[msg.sender] -= mcrAmmountForGas;
+-        balances[curator] += mcrAmmountForGas;
+-        createTransferEvent(true, msg.sender, curator, weiForMcr * mcrAmmountForGas);
+-        if (!msg.sender.send(weiForMcr * mcrAmmountForGas)) {
+-            McrForGasFailed(msg.sender, weiForMcr * mcrAmmountForGas);
+-        }
+-    }
+-
+-    function fundManagementAddress() constant returns (address fundManagementAddress){
+-        return address(fundManagementContract);
+-    }
+-
+-    function proxyManagementAddress() constant returns (address proxyManagementAddress){
+-        return address(proxyManagementContract);
+-    }
+-
+-    function fundsCombinedValue() constant returns (uint value){
+-        return fundManagementContract.fundsCombinedValue();
+-    }
+-
+-    function getGasForMcrData() constant returns (uint, uint){
+-        return (weiForMcr, mcrAmmountForGas);
+-    }
+-
+-    function approveAndCall(address _spender, uint256 _value, bytes _extraData) returns (bool success) {
+-        allowed[msg.sender][_spender] = _value;
+-        ITokenRecipient spender = ITokenRecipient(_spender);
+-        spender.receiveApproval(msg.sender, _value, this, _extraData);
+-        return true;
+-    }
+-
+-    function createTransferEvent(bool _relayEvent, address _from, address _to, uint256 _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseTransferEvent(_from, _to, _value);
+-        }
+-        Transfer(_from, _to, _value);
+-    }
+-
+-    function createApprovalEvent(bool _relayEvent, address _sender, address _spender, uint _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseApprovalEvent(_sender, _spender, _value);
+-        }
+-        Approval(_sender, _spender, _value);
+-    }
+-    
+-    function fillContract() payable{
+-        if (msg.sender != curator) throw;
+-    }
++  }
+ }

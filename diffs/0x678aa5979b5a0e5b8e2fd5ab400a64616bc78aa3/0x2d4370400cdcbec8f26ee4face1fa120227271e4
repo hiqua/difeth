@@ -1,0 +1,26 @@
+--- 
++++ 
+@@ -80,7 +80,7 @@
+ }
+ 
+ 
+-contract ERC20 is Owned {
++contract ERC20 is Base {
+ 
+     event Transfer(address indexed _from, address indexed _to, uint256 _value);
+     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+@@ -143,11 +143,11 @@
+ 
+ contract SAN is Owned, ERC20 {
+ 
+-    string public constant name     = "SANtiment TEST token";
+-    string public constant symbol   = "SAN.TEST.ET.1";
++    string public constant name     = "SANtiment network token";
++    string public constant symbol   = "SAN";
+     uint8  public constant decimals = 15;
+ 
+-    address CROWDSALE_MINTER = 0xA643A2272B6170994872BB24759F4d928631d940;
++    address CROWDSALE_MINTER = 0xD88E4822687d0F9c73E296296Ed3eCd0a193dd46;
+     address public SUBSCRIPTION_MODULE = 0x00000000;
+     address public beneficiary;
+ 

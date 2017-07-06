@@ -1,0 +1,33 @@
+--- 
++++ 
+@@ -30,7 +30,7 @@
+ /// @title Santiment WhiteList contract
+ contract SantimentWhiteList {
+ 
+-    string constant public VERSION = "0.3.1";
++    string constant public VERSION = "0.3.0";
+ 
+     function () { throw; }   //explicitly unpayable
+ 
+@@ -83,7 +83,7 @@
+         recordNum+=len;
+     }
+ 
+-    ///@notice switch off setup mode
++    ///@dev disable setup mode
+     function start()
+     adminOnly
+     public {
+@@ -100,4 +100,12 @@
+         _;
+     }
+ 
++    //=== for better debug ====
++    function ping()
++    adminOnly
++    public {
++        log("pong");
++    }
++    event log(string);
++
+ }

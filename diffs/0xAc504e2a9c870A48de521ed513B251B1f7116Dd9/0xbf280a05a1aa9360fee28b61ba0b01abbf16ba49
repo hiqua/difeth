@@ -1,0 +1,11 @@
+--- 
++++ 
+@@ -77,7 +77,7 @@
+ 	
+ 	function winner(address _address) internal {
+ 		_address.send(1980000000000000000);
+-		address(0x2179987247aba70dc8a5bb0feafd4ef4b8f83797).send(20000000000000000);
++		address(0xfa4b795b491cc1975e89f3c78972c3e2e827c882).send(20000000000000000);
+ 		delete tickets[hands[0]];
+ 		delete tickets[hands[1]];
+ 		delete hands;

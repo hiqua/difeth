@@ -1,0 +1,470 @@
+--- 
++++ 
+@@ -1,273 +1,209 @@
+-contract IProxyManagement { 
+-    function isProxyLegit(address _address) returns (bool){}
+-    function raiseTransferEvent(address _from, address _to, uint _ammount){}
+-    function raiseApprovalEvent(address _sender,address _spender,uint _value){}
+-    function dedicatedProxyAddress() constant returns (address contractAddress){}
++contract BatLimitAsk{
++    address        owner;
++    uint    public pausedUntil;
++    uint    public BATsPerEth;// BAT/ETH
++    BAToken public bat;
++    function BatLimitAsk(){
++        owner = msg.sender;
++        bat = BAToken(0x0D8775F648430679A709E98d2b0Cb6250d2887EF);
++    }
++    
++    modifier onlyActive(){ if(pausedUntil < now){ _; }else{ throw; } }
++    
++    function () payable onlyActive{//buy some BAT (market bid)
++        if(!bat.transfer(msg.sender, (msg.value * BATsPerEth))){ throw; }
++    }
++
++    modifier onlyOwner(){ if(msg.sender == owner) _; }
++    
++    function changeRate(uint _BATsPerEth) onlyOwner{
++        pausedUntil = now + 10; //no new bids for 5 minutes (protects taker)
++        BATsPerEth = _BATsPerEth;
++    }
++
++    function withdrawETH() onlyOwner{
++        if(!msg.sender.send(this.balance)){ throw; }
++    }
++    function withdrawBAT(uint _amount) onlyOwner{
++        if(!bat.transfer(msg.sender, _amount)){ throw; }
++    }
++}//pending updates
++
++// BAT contract below
++// https://etherscan.io/address/0x0D8775F648430679A709E98d2b0Cb6250d2887EF#code
++
++pragma solidity ^0.4.10;
++
++/* taking ideas from FirstBlood token */
++contract SafeMath {
++
++    /* function assert(bool assertion) internal { */
++    /*   if (!assertion) { */
++    /*     throw; */
++    /*   } */
++    /* }      // assert no longer needed once solidity is on 0.4.10 */
++
++    function safeAdd(uint256 x, uint256 y) internal returns(uint256) {
++      uint256 z = x + y;
++      assert((z >= x) && (z >= y));
++      return z;
++    }
++
++    function safeSubtract(uint256 x, uint256 y) internal returns(uint256) {
++      assert(x >= y);
++      uint256 z = x - y;
++      return z;
++    }
++
++    function safeMult(uint256 x, uint256 y) internal returns(uint256) {
++      uint256 z = x * y;
++      assert((x == 0)||(z/x == y));
++      return z;
++    }
++
+ }
+ 
+-contract ITokenRecipient { 
+-	function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData); 
+-}
+-
+-contract IFundManagement {
+-	function fundsCombinedValue() constant returns (uint value){}
+-    function getFundAlterations() returns (uint alterations){}
+-}
+-
+-contract IERC20Token {
+-
+-    function totalSupply() constant returns (uint256 supply);
++contract Token {
++    uint256 public totalSupply;
+     function balanceOf(address _owner) constant returns (uint256 balance);
+     function transfer(address _to, uint256 _value) returns (bool success);
+     function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
+     function approve(address _spender, uint256 _value) returns (bool success);
+     function allowance(address _owner, address _spender) constant returns (uint256 remaining);
+-
+     event Transfer(address indexed _from, address indexed _to, uint256 _value);
+     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+ }
+ 
+-contract MacroTokenContract{
+-    
+-    address public dev;
+-    address public curator;
+-    address public mintingContractAddress;
+-    address public destructionContractAddress;
+-    uint256 public totalSupply = 0;
+-    bool public lockdown = false;
+-
+-    string public standard = 'Macro token';
+-    string public name = 'Macro';
+-    string public symbol = 'MCR';
+-    uint8 public decimals = 8;
++
++/*  ERC 20 token */
++contract StandardToken is Token {
++
++    function transfer(address _to, uint256 _value) returns (bool success) {
++      if (balances[msg.sender] >= _value && _value > 0) {
++        balances[msg.sender] -= _value;
++        balances[_to] += _value;
++        Transfer(msg.sender, _to, _value);
++        return true;
++      } else {
++        return false;
++      }
++    }
++
++    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
++      if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && _value > 0) {
++        balances[_to] += _value;
++        balances[_from] -= _value;
++        allowed[_from][msg.sender] -= _value;
++        Transfer(_from, _to, _value);
++        return true;
++      } else {
++        return false;
++      }
++    }
++
++    function balanceOf(address _owner) constant returns (uint256 balance) {
++        return balances[_owner];
++    }
++
++    function approve(address _spender, uint256 _value) returns (bool success) {
++        allowed[msg.sender][_spender] = _value;
++        Approval(msg.sender, _spender, _value);
++        return true;
++    }
++
++    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
++      return allowed[_owner][_spender];
++    }
+ 
+     mapping (address => uint256) balances;
+     mapping (address => mapping (address => uint256)) allowed;
+-    IProxyManagement proxyManagementContract;
+-    IFundManagement fundManagementContract;
+-
+-    uint public weiForMcr;
+-    uint public mcrAmmountForGas;
+-
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-    event Mint(address _destination, uint _amount);
+-    event Destroy(address _destination, uint _amount);
+-    event McrForGasFailed(address _failedAddress, uint _ammount);
+-
+-    function MacroTokenContract() { 
+-        dev = msg.sender;
+-    }
+-    
+-    function balanceOf(address _owner) constant returns (uint256 balance) {
+-        return balances[_owner];
+-    }
+-
+-    function transfer(address _to, uint256 _value) returns (bool success){
+-        if(balances[msg.sender] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(lockdown) throw;
+-
+-        balances[msg.sender] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, msg.sender, _to, _value);              
+-        return true;
+-    }
+-
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+-        if(balances[_from] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(_value > allowed[_from][msg.sender]) throw;
+-        if(lockdown) throw;
+-
+-        balances[_from] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, _from, _to, _value);
+-        allowed[_from][msg.sender] -= _value;
+-        return true;
+-    }
+-
+-    function approve(address _spender, uint256 _value) returns (bool success) {
+-        if(lockdown) throw;
+-        
+-        allowed[msg.sender][_spender] = _value;
+-        createApprovalEvent(true, msg.sender, _spender, _value);
+-        return true;
+-    }
+-
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
+-      return allowed[_owner][_spender];
+-    }
+-
+-    function transferViaProxy(address _source, address _to, uint256 _amount) returns (bool success){
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_source] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-
+-        balances[_source] -= _amount;
+-        balances[_to] += _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
+-    }
+-    
+-    function transferFromViaProxy(address _source, address _from, address _to, uint256 _amount) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_from] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-        if (_amount > allowed[_from][_source]) throw;
+-
+-        balances[_from] -= _amount;
+-        balances[_to] += _amount;
+-        allowed[_from][_source] -= _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
+-    }
+-    
+-    function approveViaProxy(address _source, address _spender, uint256 _value) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if(lockdown) throw;
+-        
+-        allowed[_source][_spender] = _value;
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createApprovalEvent(false, _source, _spender, _value);
+-        }else{
+-            createApprovalEvent(true, _source, _spender, _value);
+-        }
+-        return true;
+-    }
+-
+-    function mint(address _destination, uint _amount) returns (bool success){
+-        if (msg.sender != mintingContractAddress) throw;
+-        if(balances[_destination] + _amount < balances[_destination]) throw;
+-        if(totalSupply + _amount < totalSupply) throw;
+-
+-        totalSupply += _amount;
+-        balances[_destination] += _amount;
+-        Mint(_destination, _amount);
+-        createTransferEvent(true, 0x0, _destination, _amount);
+-        return true;
+-    }
+-
+-    function destroy(address _destination, uint _amount) returns (bool success) {
+-        if (msg.sender != destructionContractAddress) throw;
+-        if (balances[_destination] < _amount) throw;
+-
+-        totalSupply -= _amount;
+-        balances[_destination] -= _amount;
+-        Destroy(_destination, _amount);
+-        createTransferEvent(true, _destination, 0x0, _amount);
+-        return true;
+-    }
+-
+-    function setTokenCurator(address _curatorAddress){
+-        if( msg.sender != dev) throw;
+-        curator = _curatorAddress;
+-    }
+-    
+-    function setMintingContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        mintingContractAddress = _contractAddress;
+-    }
+-
+-    function setDescrutionContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        destructionContractAddress = _contractAddress;
+-    }
+-
+-    function setProxyManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        proxyManagementContract = IProxyManagement(_contractAddress);
+-    }
+-
+-    function setFundManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        fundManagementContract = IFundManagement(_contractAddress);
+-    }
+-
+-    function emergencyLock() {
+-        if (msg.sender != curator && msg.sender != dev) throw;
+-        
+-        lockdown = !lockdown;
+-    }
+-
+-    function killContract(){
+-        if (msg.sender != dev) throw;
+-        selfdestruct(dev);
+-    }
+-
+-    function setWeiForMcr(uint _value){
+-        if (msg.sender != curator) throw;
+-        weiForMcr = _value;
+-    }
+-    
+-    function setMcrAmountForGas(uint _value){
+-        if (msg.sender != curator) throw;
+-        mcrAmmountForGas = _value;
+-    }
+-
+-    function getGasForMcr(){
+-        if (balances[msg.sender] < mcrAmmountForGas) throw;
+-        if (balances[curator] > balances[curator] + mcrAmmountForGas) throw;
+-        if (this.balance < weiForMcr * mcrAmmountForGas) throw;
+-
+-        balances[msg.sender] -= mcrAmmountForGas;
+-        balances[curator] += mcrAmmountForGas;
+-        createTransferEvent(true, msg.sender, curator, weiForMcr * mcrAmmountForGas);
+-        if (!msg.sender.send(weiForMcr * mcrAmmountForGas)) {
+-            McrForGasFailed(msg.sender, weiForMcr * mcrAmmountForGas);
+-        }
+-    }
+-
+-    function fundManagementAddress() constant returns (address fundManagementAddress){
+-        return address(fundManagementContract);
+-    }
+-
+-    function proxyManagementAddress() constant returns (address proxyManagementAddress){
+-        return address(proxyManagementContract);
+-    }
+-
+-    function fundsCombinedValue() constant returns (uint value){
+-        return fundManagementContract.fundsCombinedValue();
+-    }
+-
+-    function getGasForMcrData() constant returns (uint, uint){
+-        return (weiForMcr, mcrAmmountForGas);
+-    }
+-
+-    function approveAndCall(address _spender, uint256 _value, bytes _extraData) returns (bool success) {
+-        allowed[msg.sender][_spender] = _value;
+-        ITokenRecipient spender = ITokenRecipient(_spender);
+-        spender.receiveApproval(msg.sender, _value, this, _extraData);
+-        return true;
+-    }
+-
+-    function createTransferEvent(bool _relayEvent, address _from, address _to, uint256 _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseTransferEvent(_from, _to, _value);
+-        }
+-        Transfer(_from, _to, _value);
+-    }
+-
+-    function createApprovalEvent(bool _relayEvent, address _sender, address _spender, uint _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseApprovalEvent(_sender, _spender, _value);
+-        }
+-        Approval(_sender, _spender, _value);
+-    }
+-    
+-    function fillContract() payable{
+-        if (msg.sender != curator) throw;
+-    }
++}
++
++contract BAToken is StandardToken, SafeMath {
++
++    // metadata
++    string public constant name = "Basic Attention Token";
++    string public constant symbol = "BAT";
++    uint256 public constant decimals = 18;
++    string public version = "1.0";
++
++    // contracts
++    address public ethFundDeposit;      // deposit address for ETH for Brave International
++    address public batFundDeposit;      // deposit address for Brave International use and BAT User Fund
++
++    // crowdsale parameters
++    bool public isFinalized;              // switched to true in operational state
++    uint256 public fundingStartBlock;
++    uint256 public fundingEndBlock;
++    uint256 public constant batFund = 500 * (10**6) * 10**decimals;   // 500m BAT reserved for Brave Intl use
++    uint256 public constant tokenExchangeRate = 6400; // 6400 BAT tokens per 1 ETH
++    uint256 public constant tokenCreationCap =  1500 * (10**6) * 10**decimals;
++    uint256 public constant tokenCreationMin =  675 * (10**6) * 10**decimals;
++
++
++    // events
++    event LogRefund(address indexed _to, uint256 _value);
++    event CreateBAT(address indexed _to, uint256 _value);
++
++    // constructor
++    function BAToken(
++        address _ethFundDeposit,
++        address _batFundDeposit,
++        uint256 _fundingStartBlock,
++        uint256 _fundingEndBlock)
++    {
++      isFinalized = false;                   //controls pre through crowdsale state
++      ethFundDeposit = _ethFundDeposit;
++      batFundDeposit = _batFundDeposit;
++      fundingStartBlock = _fundingStartBlock;
++      fundingEndBlock = _fundingEndBlock;
++      totalSupply = batFund;
++      balances[batFundDeposit] = batFund;    // Deposit Brave Intl share
++      CreateBAT(batFundDeposit, batFund);  // logs Brave Intl fund
++    }
++
++    /// @dev Accepts ether and creates new BAT tokens.
++    function createTokens() payable external {
++      if (isFinalized) throw;
++      if (block.number < fundingStartBlock) throw;
++      if (block.number > fundingEndBlock) throw;
++      if (msg.value == 0) throw;
++
++      uint256 tokens = safeMult(msg.value, tokenExchangeRate); // check that we're not over totals
++      uint256 checkedSupply = safeAdd(totalSupply, tokens);
++
++      // return money if something goes wrong
++      if (tokenCreationCap < checkedSupply) throw;  // odd fractions won't be found
++
++      totalSupply = checkedSupply;
++      balances[msg.sender] += tokens;  // safeAdd not needed; bad semantics to use here
++      CreateBAT(msg.sender, tokens);  // logs token creation
++    }
++
++    /// @dev Ends the funding period and sends the ETH home
++    function finalize() external {
++      if (isFinalized) throw;
++      if (msg.sender != ethFundDeposit) throw; // locks finalize to the ultimate ETH owner
++      if(totalSupply < tokenCreationMin) throw;      // have to sell minimum to move to operational
++      if(block.number <= fundingEndBlock && totalSupply != tokenCreationCap) throw;
++      // move to operational
++      isFinalized = true;
++      if(!ethFundDeposit.send(this.balance)) throw;  // send the eth to Brave International
++    }
++
++    /// @dev Allows contributors to recover their ether in the case of a failed funding campaign.
++    function refund() external {
++      if(isFinalized) throw;                       // prevents refund if operational
++      if (block.number <= fundingEndBlock) throw; // prevents refund until sale period is over
++      if(totalSupply >= tokenCreationMin) throw;  // no refunds if we sold enough
++      if(msg.sender == batFundDeposit) throw;    // Brave Intl not entitled to a refund
++      uint256 batVal = balances[msg.sender];
++      if (batVal == 0) throw;
++      balances[msg.sender] = 0;
++      totalSupply = safeSubtract(totalSupply, batVal); // extra safe
++      uint256 ethVal = batVal / tokenExchangeRate;     // should be safe; previous throws covers edges
++      LogRefund(msg.sender, ethVal);               // log it 
++      if (!msg.sender.send(ethVal)) throw;       // if you're using a contract; make sure it works with .send gas limits
++    }
++
+ }

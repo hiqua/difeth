@@ -1,0 +1,278 @@
+--- 
++++ 
+@@ -1,188 +1,119 @@
+-pragma solidity ^0.4.11;
++pragma solidity ^0.4.8;
+ 
+-//https://github.com/nexusdev/erc20/blob/master/contracts/erc20.sol
++contract IProxy{
++	function raiseTransferEvent(address _from, address _to, uint256 _value) returns (bool success) {}
++	function raiseApprovalEvent(address _owner, address _spender, uint256 _value) returns (bool success){}
++}
+ 
+-contract ERC20Constant {
+-    function balanceOf( address who ) constant returns (uint value);
+-}
+-contract ERC20Stateful {
+-    function transfer( address to, uint value) returns (bool ok);
+-}
+-contract ERC20Events {
+-    event Transfer(address indexed from, address indexed to, uint value);
+-}
+-contract ERC20 is ERC20Constant, ERC20Stateful, ERC20Events {}
++contract ProxyManagementContract{
+ 
+-contract owned {
+-    address public owner;
++  
++    address public dev;
++    address public curator;
++    address public tokenAddress;
+ 
+-    function owned() {
+-        owner = msg.sender;
++    address[] public proxyList; 
++
++    mapping (address => bool) approvedProxies;
++    IProxy dedicatedProxy;
++
++
++    function ProxyManagementContract(){
++        dev = msg.sender;
+     }
+ 
+-    modifier onlyOwner {
+-        if (msg.sender != owner) throw;
+-        _;
++    function addProxy(address _proxyAdress) returns (uint error){
++        if(msg.sender != curator){ return 1;}
++        
++        approvedProxies[_proxyAdress] = true;
++        proxyList.push(_proxyAdress);
++        return 0;
+     }
+ 
+-    function transferOwnership(address newOwner) onlyOwner {
+-        owner = newOwner;
+-    }
+-}
+-
+-// contract can sell tokens for ETH
+-// prices are in amount of wei per batch of token units
+-
+-contract TokenTrader is owned {
+-
+-    address public asset;       // address of token
+-    uint256 public sellPrice;   // contract sells lots of tokens at this price
+-    uint256 public units;       // lot size (token-wei)
+-
+-    bool public sellsTokens;    // is contract selling
+-
+-    event ActivatedEvent(bool sells);
+-    event UpdateEvent();
+-
+-    function TokenTrader (
+-        address _asset, 
+-        uint256 _sellPrice, 
+-        uint256 _units,
+-        bool    _sellsTokens
+-        )
+-    {
+-          asset         = _asset; 
+-          sellPrice    = _sellPrice;
+-          units         = _units; 
+-          sellsTokens   = _sellsTokens;
+-
+-          ActivatedEvent(sellsTokens);
++    function removeProxy(address _proxyAddress) returns (uint error){
++        if(msg.sender != curator){ return 1; }
++        if (!approvedProxies[_proxyAddress]) { return 55; }
++        
++        uint temAddressArrayLength = proxyList.length - 1;
++        uint newArrayCnt = 0;
++        address[] memory tempAddressArray = new address[](temAddressArrayLength);
++        
++        for (uint cnt = 0; cnt < proxyList.length; cnt++){
++            if (_proxyAddress == proxyList[cnt]){
++                approvedProxies[_proxyAddress] = false;
++            }
++            else{
++                tempAddressArray[newArrayCnt] = proxyList[cnt];
++                newArrayCnt += 1;
++            }
++        }
++        proxyList = tempAddressArray;
++        return 0;
+     }
+ 
+-    // modify trading behavior
+-    function activate (
+-        bool    _sellsTokens
+-        ) onlyOwner
+-    {
+-          sellsTokens   = _sellsTokens;
+-
+-          ActivatedEvent(sellsTokens);
++    function changeDedicatedProxy(address _contractAddress) returns (uint error){
++        if(msg.sender != curator){ return 1;}
++        
++        dedicatedProxy = IProxy(_contractAddress);
++        return 0;
+     }
+ 
+-    // allow owner to remove trade token
+-    function withdrawAsset(uint256 _value) onlyOwner returns (bool ok)
+-    {
+-        return ERC20(asset).transfer(owner,_value);
+-        UpdateEvent();
++    function raiseTransferEvent(address _from, address _to, uint256 _value) returns (uint error){
++        if (msg.sender != tokenAddress) { return 1; }
++        
++        dedicatedProxy.raiseTransferEvent(_from, _to, _value);
++        return 0;
+     }
+ 
+-    // allow owner to remove arbitrary tokens
+-    // included just in case contract receives wrong token
+-    function withdrawToken(address _token, uint256 _value) onlyOwner returns (bool ok)
+-    {
+-        return ERC20(_token).transfer(owner,_value);
+-        UpdateEvent();
++    function raiseApprovalEvent(address _owner, address _spender, uint256 _value) returns (uint error){
++        if (msg.sender == tokenAddress) { return 1; }
++
++        dedicatedProxy.raiseApprovalEvent(_owner, _spender, _value);
++        return 0;
+     }
+ 
+-    // allow owner to remove ETH
+-    function withdraw(uint256 _value) onlyOwner returns (bool ok)
+-    {
+-        if(this.balance >= _value) {
+-            return owner.send(_value);
+-        }
+-        UpdateEvent();
++    function setProxyManagementCurator(address _curatorAdress) returns (uint error){
++        if (msg.sender != dev){ return 1; }
++              
++        curator = _curatorAdress;
++        return 0;
+     }
+ 
+-    //user buys token with ETH
+-    function buy() payable {
+-        if(sellsTokens || msg.sender == owner) 
+-        {
+-            uint order   = msg.value / sellPrice; 
+-            uint can_sell = ERC20(asset).balanceOf(address(this)) / units;
+-
+-            if(order > can_sell)
+-            {
+-                uint256 change = msg.value - (can_sell * sellPrice);
+-                order = can_sell;
+-                if(!msg.sender.send(change)) throw;
+-            }
+-
+-            if(order > 0) {
+-                if(!ERC20(asset).transfer(msg.sender,order * units)) throw;
+-            }
+-            UpdateEvent();
+-        }
+-        else if(!msg.sender.send(msg.value)) throw;  // return user funds if the contract is not selling
++    function setDedicatedProxy(address _contractAddress) returns (uint error){
++        if (msg.sender != curator){ return 1; }
++              
++        dedicatedProxy = IProxy(_contractAddress);
++        return 0;
+     }
+ 
+-    // sending ETH to contract sells GNT to user
+-    function () payable {
+-        buy();
+-    }
+-}
+-
+-// This contract deploys TokenTrader contracts and logs the event
+-// trade pairs are identified with sha3(asset,units)
+-
+-contract TokenTraderFactory {
+-
+-    event TradeListing(bytes32 bookid, address owner, address addr);
+-    event NewBook(bytes32 bookid, address asset, uint256 units);
+-
+-    mapping( address => bool ) _verify;
+-    mapping( bytes32 => bool ) pairExits;
+-    
+-    function verify(address tradeContract)  constant returns (
+-        bool valid,
+-        address asset, 
+-        uint256 sellPrice, 
+-        uint256 units,
+-        bool    sellsTokens
+-        ) {
+-            
+-            valid = _verify[tradeContract];
+-            
+-            if(valid) {
+-                TokenTrader t = TokenTrader(tradeContract);
+-                
+-                asset = t.asset();
+-                sellPrice = t.sellPrice();
+-                units = t.units();
+-                sellsTokens = t.sellsTokens();
+-            }
++    function setTokenAddress(address _contractAddress) returns (uint error){
++        if (msg.sender != curator){ return 1; }
+         
++        tokenAddress = _contractAddress;
++        return 0;
+     }
+ 
+-    function createTradeContract(       
+-        address _asset, 
+-        uint256 _sellPrice, 
+-        uint256 _units,
+-        bool    _sellsTokens
+-        ) returns (address) 
+-    {
+-        if(_units == 0) throw;              // can't sell zero units
++    function killContract() returns (uint error){
++        if (msg.sender != dev){ return 1; }
+ 
+-        address trader = new TokenTrader (
+-                     _asset, 
+-                     _sellPrice, 
+-                     _units,
+-                     _sellsTokens);
++        selfdestruct(dev);
++        return 0;
++    }
+ 
+-        var bookid = sha3(_asset,_units);
++    function dedicatedProxyAddress() constant returns (address contractAddress){
++        return address(dedicatedProxy);
++    }
+ 
+-        _verify[trader] = true; // record that this factory created the trader
++    function getApprovedProxies() constant returns (address[] proxies){
++        return proxyList;
++    }
+ 
+-        TokenTrader(trader).transferOwnership(msg.sender); // set the owner to whoever called the function
+-
+-        if(pairExits[bookid] == false) {
+-            pairExits[bookid] = true;
+-            NewBook(bookid, _asset, _units);
+-        }
+-
+-        TradeListing(bookid,msg.sender,trader);
++    function isProxyLegit(address _proxyAddress) constant returns (bool isLegit){
++        if (_proxyAddress == address(dedicatedProxy)){ return true; }
++        return approvedProxies[_proxyAddress];
+     }
+ 
+     function () {
+-        throw;     // Prevents accidental sending of ether to the factory
++        throw;
+     }
+ }

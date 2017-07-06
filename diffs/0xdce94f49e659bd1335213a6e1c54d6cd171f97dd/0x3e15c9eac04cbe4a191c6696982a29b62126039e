@@ -1,0 +1,11 @@
+--- 
++++ 
+@@ -3,7 +3,7 @@
+ contract Campaign {
+ 
+         address public JohanNygren;
+-        bool public campaignOpen;
++        bool campaignOpen;
+ 
+         function Campaign() {
+                 JohanNygren = 0x948176cb42b65d835ee4324914b104b66fb93b52;

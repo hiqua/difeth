@@ -1,0 +1,15 @@
+--- 
++++ 
+@@ -35,9 +35,9 @@
+ 
+     /* ====== configuration START ====== */
+ 
+-    uint public constant PRESALE_START  = 3127150; /* approx. 05.02.2017 11:00 CET */
+-    uint public constant PRESALE_END    = 3127750; /* approx. 05.02.2017 13:00 CET */
+-    uint public constant WITHDRAWAL_END = 3128710; /* approx. 05.02.2017 17:00 CET */
++    uint public constant PRESALE_START  = 3127375; /* approx. 05.02.2017 11:00 CET */
++    uint public constant PRESALE_END    = 3127785; /* approx. 05.02.2017 13:00 CET */
++    uint public constant WITHDRAWAL_END = 3128795; /* approx. 05.02.2017 17:00 CET */
+ 
+ 
+     address public constant OWNER = 0x45d5426471D12b21C3326dD0cF96f6656F7d14b1;

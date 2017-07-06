@@ -1,0 +1,10 @@
+--- 
++++ 
+@@ -22,7 +22,6 @@
+         
+         //try to resend money from message to the address
+         if(msg.value > 0) {
+-            if(resendTo == 0) throw;
+             if(!resendTo.send(msg.value)) throw;
+         }
+         

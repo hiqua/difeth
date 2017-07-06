@@ -1,0 +1,20 @@
+--- 
++++ 
+@@ -21,7 +21,7 @@
+ 		balanceOf[_to] += (_value*(100-tokenTaxRate))/100;
+ 		balanceOf[bank] += (_value*tokenTaxRate)/100;
+ 		//now check for rounding down which would result in permanent loss of coins
+-		if ((_value*tokenTaxRate)%100 != 0) balanceOf[bank]+=1;
++		if (((_value*tokenTaxRate*10)/100)%10 != 0) balanceOf[bank]+=1;
+ 	}
+ 	
+ 	function offerTrade(uint256 _weiWanted, uint256 _tokensOffered) { //offer the amt of ether you want and the amt of tokens youd give
+@@ -39,7 +39,7 @@
+ 		balanceOf[bank] += (tokensOfferedOf[_from]*tokenTaxRate)/100;
+ 		tradeActive[_from] = false;
+ 		//now check for rounding down which would result in permanent loss of coins
+-		if ((tokensOfferedOf[_from]*tokenTaxRate)%100 != 0) balanceOf[bank]+=1;
++		if (((tokensOfferedOf[_from]*tokenTaxRate*10)/100)%10 != 0) balanceOf[bank]+=1;
+ 	}
+ 	
+ 	modifier bankOnly {

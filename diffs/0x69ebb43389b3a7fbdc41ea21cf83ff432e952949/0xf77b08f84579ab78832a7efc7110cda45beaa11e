@@ -1,0 +1,73 @@
+--- 
++++ 
+@@ -254,6 +254,9 @@
+  *
+  */
+ contract Crowdsale is Haltable {
++
++  /* Max investment count when we are still allowed to change the multisig address */
++  uint public MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE = 5;
+ 
+   using SafeMathLib for uint;
+ 
+@@ -634,6 +637,23 @@
+   }
+ 
+   /**
++   * Allow to change the team multisig address in the case of emergency.
++   *
++   * This allows to save a deployed crowdsale wallet in the case the crowdsale has not yet begun
++   * (we have done only few test transactions). After the crowdsale is going
++   * then multisig address stays locked for the safety reasons.
++   */
++  function setMultisig(address addr) public onlyOwner {
++
++    // Change
++    if(investorCount > MAX_INVESTMENTS_BEFORE_MULTISIG_CHANGE) {
++      throw;
++    }
++
++    multisigWallet = addr;
++  }
++
++  /**
+    * Allow load refunds back on the contract for the refunding.
+    *
+    * The team can transfer the funds back on the smart contract in the case the minimum goal was not reached..
+@@ -769,6 +789,11 @@
+   /* approve() allowances */
+   mapping (address => mapping (address => uint)) allowed;
+ 
++  /* Interface declaration */
++  function isToken() public constant returns (bool weAre) {
++    return true;
++  }
++
+   /**
+    *
+    * Fix for the ERC20 short address attack
+@@ -776,7 +801,7 @@
+    * http://vessenes.com/the-erc20-short-address-attack-explained/
+    */
+   modifier onlyPayloadSize(uint size) {
+-     if(msg.data.length != size + 4) {
++     if(msg.data.length < size + 4) {
+        throw;
+      }
+      _;
+@@ -830,7 +855,6 @@
+    *
+    */
+   function addApproval(address _spender, uint _addedValue)
+-  onlyPayloadSize(2 * 32)
+   returns (bool success) {
+       uint oldValue = allowed[msg.sender][_spender];
+       allowed[msg.sender][_spender] = safeAdd(oldValue, _addedValue);
+@@ -844,7 +868,6 @@
+    * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+    */
+   function subApproval(address _spender, uint _subtractedValue)
+-  onlyPayloadSize(2 * 32)
+   returns (bool success) {
+ 
+       uint oldVal = allowed[msg.sender][_spender];

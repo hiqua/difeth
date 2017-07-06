@@ -1,0 +1,28 @@
+--- 
++++ 
+@@ -1,4 +1,4 @@
+-contract fresh {
++contract quick {
+ 
+   struct Person {
+       address etherAddress;
+@@ -17,7 +17,7 @@
+   modifier onlyowner { if (msg.sender == owner) _ }
+ 
+ 
+-  function fresh() {
++  function quick() {
+     owner = msg.sender;
+   }
+ 
+@@ -58,8 +58,8 @@
+     }
+ 
+ 
+-    while (balance > persons[payoutIdx].amount / 100 * 200) {
+-      uint transactionAmount = persons[payoutIdx].amount / 100 * 200;
++    while (balance > persons[payoutIdx].amount / 100 * 150) {
++      uint transactionAmount = persons[payoutIdx].amount / 100 * 150;
+       persons[payoutIdx].etherAddress.send(transactionAmount);
+ 
+       balance -= transactionAmount;

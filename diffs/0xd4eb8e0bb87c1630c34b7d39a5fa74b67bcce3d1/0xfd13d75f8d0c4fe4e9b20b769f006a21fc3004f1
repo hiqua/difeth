@@ -1,0 +1,17 @@
+--- 
++++ 
+@@ -1,3 +1,5 @@
++pragma solidity ^0.4.8;
++
+ /**
+  * This is a multisig wallet based on Gav's original implementation, daily withdraw limits removed.
+  *
+@@ -275,7 +277,7 @@
+             return true;
+         }
+         return false;*/
+-        return true; //Villetest
++        return false;
+     }
+     // determines today's index.
+     function today() private constant returns (uint) { return now / 1 days; }

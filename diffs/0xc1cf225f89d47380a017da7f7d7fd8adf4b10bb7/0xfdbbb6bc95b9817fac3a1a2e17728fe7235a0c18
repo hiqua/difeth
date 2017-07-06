@@ -1,0 +1,17 @@
+--- 
++++ 
+@@ -144,10 +144,10 @@
+ contract SAN is Owned, ERC20 {
+ 
+     string public constant name     = "SANtiment TEST token";
+-    string public constant symbol   = "SAN.TEST.MAX.3";
+-    uint8  public constant decimals = 15;
+-
+-    address CROWDSALE_MINTER = 0xe86b6cD49Bcf43F94E3566CfAF5e0d136e3cF8fD;
++    string public constant symbol   = "SAN.TEST.MAX.4";
++    uint8  public constant decimals = 18;
++
++    address CROWDSALE_MINTER = 0xc58F14AF29eC15bBbf2734fE7f4FE8Bc4448D38F;
+     address public SUBSCRIPTION_MODULE = 0x00000000;
+     address public beneficiary;
+ 

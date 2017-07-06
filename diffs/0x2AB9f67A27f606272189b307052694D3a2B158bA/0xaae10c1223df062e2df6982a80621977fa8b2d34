@@ -1,0 +1,155 @@
+--- 
++++ 
+@@ -37,7 +37,6 @@
+     function getPrice(string _datasource, uint gaslimit) returns (uint _dsprice);
+     function useCoupon(string _coupon);
+     function setProofType(byte _proofType);
+-    function setCustomGasPrice(uint _gasPrice);
+ }
+ contract OraclizeAddrResolverI {
+     function getAddress() returns (address _addr);
+@@ -134,9 +133,6 @@
+     }
+     function oraclize_setProof(byte proofP) oraclizeAPI internal {
+         return oraclize.setProofType(proofP);
+-    }
+-    function oraclize_setCustomGasPrice(uint gasPrice) oraclizeAPI internal {
+-        return oraclize.setCustomGasPrice(gasPrice);
+     }
+ 
+     function getCodeSize(address _addr) constant internal returns(uint _size) {
+@@ -302,8 +298,8 @@
+     }
+ 
+     //Starting at 1
+-    mapping(address => uint) public investorIDs;
+-    mapping(uint => Investor) public investors;
++    mapping(address => uint) investorIDs;
++    mapping(uint => Investor) investors;
+     uint public numInvestors = 0;
+ 
+     uint public invested = 0;
+@@ -312,7 +308,7 @@
+     address houseAddress;
+     bool public isStopped;
+ 
+-    WithdrawalProposal public proposedWithdrawal;
++    WithdrawalProposal proposedWithdrawal;
+ 
+     mapping (bytes32 => Bet) bets;
+     bytes32[] betsKeys;
+@@ -492,6 +488,10 @@
+ 
+         uint bankroll = getBankroll();
+ 
++        if (this.balance < bankroll) {
++            bankroll = this.balance;
++        }
++
+         uint minInvestment = getMinInvestment();
+ 
+         return (bankroll, pwin, edge, maxWin, minBet, amountWagered, (investorsProfit - investorsLoses), minInvestment, betsKeys.length);
+@@ -531,7 +531,9 @@
+         return investors[investorIDs[currentInvestor]].amountInvested + getProfitShare(currentInvestor) - getLosesShare(currentInvestor);
+     }
+ 
+-    function searchSmallestInvestor() constant returns(uint) {
++    // PRIVATE HELPERS FUNCTION
++
++    function searchSmallestInvestor() private returns(uint) {
+         uint investorID = 1;
+         for (uint i = 1; i <= numInvestors; i++) {
+             if (getBalance(investors[i].investorAddress) < getBalance(investors[investorID].investorAddress)) {
+@@ -542,8 +544,6 @@
+         return investorID;
+     }
+ 
+-    // PRIVATE HELPERS FUNCTION
+-
+     function safeSend(address addr, uint value) private {
+         if (this.balance < value) {
+             ValueIsTooBig();
+@@ -555,6 +555,7 @@
+             if (addr != houseAddress) {
+                 //Forward to house address all change
+                 if (!(houseAddress.call.gas(safeGas).value(value)())) FailedSend(houseAddress, value);
++                delete investorsProfit;
+             }
+         }
+     }
+@@ -595,7 +596,7 @@
+         uint betValue = msg.value - oraclizeFee;
+         if ((((betValue * ((10000 - edge) - pwin)) / pwin ) <= (maxWin * getBankroll()) / 10000) && (betValue >= minBet)) {
+             // encrypted arg: '\n{"jsonrpc":2.0,"method":"generateSignedIntegers","params":{"apiKey":"YOUR_API_KEY","n":1,"min":1,"max":10000},"id":1}'
+-            bytes32 myid = oraclize_query("URL", "json(https://api.random.org/json-rpc/1/invoke).result.random.data.0","BAMe+COA7GTmPrm1MtEyeRfPpOjXWs99NXtPmkY1LL7BEyA5Ir/oIYHZ5v8cfJ7gzkBJY7sMBqyUKcPIcORQ8CPC4x11Nmlys12n8zMopJBROF+19EDhLEaJR4pMwFvhlW/mkhFHb1hxB3ZR/toj//x+l6fi+h0eXWxx2qqKulId4KY+VcsYIJb/seH+7qEWmu78HQ6LXSdkRAa0lG6tkNFpB0feuh2VztWxd3CC/j1MIT1l0laucp2zFD2FfJngwpix99iYcNq9mvHhDxYpR9eGSRMZ9BnLgsvIW/QB3Zk=", ORACLIZE_GAS_LIMIT + safeGas);
++            bytes32 myid = oraclize_query("URL", "json(https://api.random.org/json-rpc/1/invoke).result.random.data.0","BDHJtabQ1ZOTn7ru7NwtVZEVKMS3XC58L3kS7WAcW1yfJU7uPfq4hp5N9Uvj9ZAhYl3qfyyUWHiPng8PLAAZhMqp24mUifAbScZZQyJWST4NcHSOtZf9yK6pQKo+cLzRZrC+YlB5VRSgPOGFTJXA16GRfAbmKEAE6BcD+ELIPTOgHZKfT/WQuDxB8N0vrtmDK1RddlxIE5OKlruRL6L2EaV0c77K7Xtr326wr/epJefuJBy0p90/SDCwWHzRwsNaFO1hq9vAHGik655GX6fl0O157w3P9z7BaxqiGOQH5V0=", ORACLIZE_GAS_LIMIT + safeGas);
+             bets[myid] = Bet(msg.sender, betValue, 0);
+             betsKeys.push(myid);
+         }
+@@ -647,22 +648,23 @@
+         onlyMoreThanZero
+         onlyNotInvestors
+         onlyMoreThanMinInvestment {
+-
+         profitDistribution();
+ 
+-        if (numInvestors == maxInvestors) {
++        if (numInvestors < maxInvestors) {
++            numInvestors++;
++            addInvestorAtID(numInvestors);
++        }
++        else {
+             uint smallestInvestorID = searchSmallestInvestor();
+             divest(investors[smallestInvestorID].investorAddress);
+-        }
+-
+-        numInvestors++;
+-        addInvestorAtID(numInvestors);
++            addInvestorAtID(smallestInvestorID);
++            numInvestors++;
++        }
+     }
+ 
+     function divest() onlyInvestors rejectValue {
+         divest(msg.sender);
+     }
+-
+ 
+     function divest(address currentInvestor)
+         private
+@@ -674,31 +676,18 @@
+         invested -= investors[currentID].amountInvested;
+         uint divestFeeAmount =  (amountToReturn*divestFee)/10000;
+         amountToReturn -= divestFeeAmount;
+-
++        //Clean up
++        numInvestors--;
+         delete investors[currentID];
+         delete investorIDs[currentInvestor];
+-        //Reorder investors
+-
+-        if (currentID != numInvestors) {
+-            // Get last investor
+-            Investor lastInvestor = investors[numInvestors];
+-            //Set last investor ID to investorID of divesting account
+-            investorIDs[lastInvestor.investorAddress] = currentID;
+-            //Copy investor at the new position in the mapping
+-            investors[currentID] = lastInvestor;
+-            //Delete old position in the mappping
+-            delete investors[numInvestors];
+-        }
+-
+-        numInvestors--;
+         safeSend(currentInvestor, amountToReturn);
+         safeSend(houseAddress, divestFeeAmount);
+     }
+ 
+     function forceDivestOfAllInvestors() onlyOwner rejectValue {
+         uint copyNumInvestors = numInvestors;
+-        for (uint i = 1; i <= copyNumInvestors; i++) {
+-            divest(investors[1].investorAddress);
++        for (uint investorID = 1; investorID <= copyNumInvestors; investorID++) {
++            divest(investors[investorID].investorAddress);
+         }
+     }
+ 

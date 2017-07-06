@@ -1,0 +1,60 @@
+--- 
++++ 
+@@ -751,7 +751,7 @@
+    * http://vessenes.com/the-erc20-short-address-attack-explained/
+    */
+   modifier onlyPayloadSize(uint size) {
+-     if(msg.data.length < size + 4) {
++     if(msg.data.length != size + 4) {
+        throw;
+      }
+      _;
+@@ -764,7 +764,7 @@
+     return true;
+   }
+ 
+-  function transferFrom(address _from, address _to, uint _value) returns (bool success) {
++  function transferFrom(address _from, address _to, uint _value) onlyPayloadSize(3 * 32) returns (bool success) {
+     var _allowance = allowed[_from][msg.sender];
+ 
+     // Check is not needed because safeSub(_allowance, _value) will already throw if this condition is not met
+@@ -798,6 +798,39 @@
+     return allowed[_owner][_spender];
+   }
+ 
++  /**
++   * Atomic increment of approved spending
++   *
++   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
++   *
++   */
++  function addApproval(address _spender, uint _addedValue)
++  onlyPayloadSize(2 * 32)
++  returns (bool success) {
++      uint oldValue = allowed[msg.sender][_spender];
++      allowed[msg.sender][_spender] = safeAdd(oldValue, _addedValue);
++      return true;
++  }
++
++  /**
++   * Atomic decrement of approved spending.
++   *
++   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
++   */
++  function subApproval(address _spender, uint _subtractedValue)
++  onlyPayloadSize(2 * 32)
++  returns (bool success) {
++
++      uint oldVal = allowed[msg.sender][_spender];
++
++      if (_subtractedValue > oldVal) {
++          allowed[msg.sender][_spender] = 0;
++      } else {
++          allowed[msg.sender][_spender] = safeSub(oldVal, _subtractedValue);
++      }
++      return true;
++  }
++
+ }
+ 
+ 

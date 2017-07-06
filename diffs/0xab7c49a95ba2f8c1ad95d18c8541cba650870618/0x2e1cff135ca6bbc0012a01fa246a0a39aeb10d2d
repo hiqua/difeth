@@ -1,0 +1,11 @@
+--- 
++++ 
+@@ -9,7 +9,7 @@
+   uint public transferred_total = 0;
+ 
+   // Minimum and Maximum Goals for Token Sale
+-  uint public constant min_goal_amount = 3000 ether;
++  uint public constant min_goal_amount = 4000 ether;
+   uint public constant max_goal_amount = 9000 ether;
+ 
+   // loftVR Offline Project Wallet

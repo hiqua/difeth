@@ -1,0 +1,23 @@
+--- 
++++ 
+@@ -61,14 +61,14 @@
+ c4cfee = 1000;
+ owner = msg.sender;
+ 
+-deadlineParticipation=1500582780;
+-deadlineVoting=1501965180;
+-participationFee=18000000000000000;
+-votingFee=10000000000000000;
+-prizeOwner=955;
++deadlineParticipation=1498585200;
++deadlineVoting=1499190000;
++participationFee=7000000000000000;
++votingFee=2000000000000000;
++prizeOwner=300;
+ prizeReferee=0;
+ prizeWinners.push(6045);
+-nLuckyVoters=3;
++nLuckyVoters=1;
+ 
+ 
+ uint16 sumPrizes = prizeOwner;

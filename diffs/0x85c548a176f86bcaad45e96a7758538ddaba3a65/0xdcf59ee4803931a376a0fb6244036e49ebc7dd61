@@ -1,0 +1,225 @@
+--- 
++++ 
+@@ -1,4 +1,10 @@
+-pragma solidity ^0.4.0;
++pragma solidity ^0.4.8;
++
++//в этом тестовом контракте мы реализуем простейший вариант казино
++//здесь будет одна игра
++//фронтенд будет полностью написан на js,html,css
++//ide http://dapps.oraclize.it/browser-solidity/
++
+ // <ORACLIZE_API>
+ /*
+ Copyright (c) 2015-2016 Oraclize SRL
+@@ -29,7 +35,7 @@
+ THE SOFTWARE.
+ */
+ 
+-pragma solidity ^0.4.0;
++pragma solidity ^0.4.0;//please import oraclizeAPI_pre0.4.sol when solidity < 0.4.0
+ 
+ contract OraclizeI {
+     address public cbAddress;
+@@ -41,6 +47,7 @@
+     function getPrice(string _datasource, uint gaslimit) returns (uint _dsprice);
+     function useCoupon(string _coupon);
+     function setProofType(byte _proofType);
++    function setConfig(bytes32 _config);
+     function setCustomGasPrice(uint _gasPrice);
+ }
+ contract OraclizeAddrResolverI {
+@@ -74,23 +81,40 @@
+     }
+ 
+     function oraclize_setNetwork(uint8 networkID) internal returns(bool){
+-        if (getCodeSize(0x1d3b2638a7cc9f2cb3d298a3da7a90b67e5506ed)>0){
++        if (getCodeSize(0x1d3b2638a7cc9f2cb3d298a3da7a90b67e5506ed)>0){ //mainnet
+             OAR = OraclizeAddrResolverI(0x1d3b2638a7cc9f2cb3d298a3da7a90b67e5506ed);
+             return true;
+         }
+-        if (getCodeSize(0x9efbea6358bed926b293d2ce63a730d6d98d43dd)>0){
+-            OAR = OraclizeAddrResolverI(0x9efbea6358bed926b293d2ce63a730d6d98d43dd);
+-            return true;
+-        }
+-        if (getCodeSize(0x20e12a1f859b3feae5fb2a0a32c18f5a65555bbf)>0){
++        if (getCodeSize(0xc03a2615d5efaf5f49f60b7bb6583eaec212fdf1)>0){ //ropsten testnet
++            OAR = OraclizeAddrResolverI(0xc03a2615d5efaf5f49f60b7bb6583eaec212fdf1);
++            return true;
++        }
++        if (getCodeSize(0x20e12a1f859b3feae5fb2a0a32c18f5a65555bbf)>0){ //ether.camp ide
+             OAR = OraclizeAddrResolverI(0x20e12a1f859b3feae5fb2a0a32c18f5a65555bbf);
+             return true;
+         }
+-        if (getCodeSize(0x9a1d6e5c6c8d081ac45c6af98b74a42442afba60)>0){
+-            OAR = OraclizeAddrResolverI(0x9a1d6e5c6c8d081ac45c6af98b74a42442afba60);
++        if (getCodeSize(0x93bbbe5ce77034e3095f0479919962a903f898ad)>0){ //norsborg testnet
++            OAR = OraclizeAddrResolverI(0x93bbbe5ce77034e3095f0479919962a903f898ad);
++            return true;
++        }
++        if (getCodeSize(0x51efaf4c8b3c9afbd5ab9f4bbc82784ab6ef8faa)>0){ //browser-solidity
++            OAR = OraclizeAddrResolverI(0x51efaf4c8b3c9afbd5ab9f4bbc82784ab6ef8faa);
+             return true;
+         }
+         return false;
++    }
++    
++    function __callback(bytes32 myid, string result) {
++        __callback(myid, result, new bytes(0));
++    }
++    function __callback(bytes32 myid, string result, bytes proof) {
++    }
++    
++    function oraclize_getPrice(string datasource) oraclizeAPI internal returns (uint){
++        return oraclize.getPrice(datasource);
++    }
++    function oraclize_getPrice(string datasource, uint gaslimit) oraclizeAPI internal returns (uint){
++        return oraclize.getPrice(datasource, gaslimit);
+     }
+     
+     function oraclize_query(string datasource, string arg) oraclizeAPI internal returns (bytes32 id){
+@@ -142,8 +166,8 @@
+     function oraclize_setCustomGasPrice(uint gasPrice) oraclizeAPI internal {
+         return oraclize.setCustomGasPrice(gasPrice);
+     }    
+-    function oraclize_setConfig(bytes config) oraclizeAPI internal {
+-        //return oraclize.setConfig(config);
++    function oraclize_setConfig(bytes32 config) oraclizeAPI internal {
++        return oraclize.setConfig(config);
+     }
+ 
+     function getCodeSize(address _addr) constant internal returns(uint _size) {
+@@ -271,69 +295,72 @@
+         return mint;
+     }
+     
++    function uint2str(uint i) internal returns (string){
++        if (i == 0) return "0";
++        uint j = i;
++        uint len;
++        while (j != 0){
++            len++;
++            j /= 10;
++        }
++        bytes memory bstr = new bytes(len);
++        uint k = len - 1;
++        while (i != 0){
++            bstr[k--] = byte(48 + i % 10);
++            i /= 10;
++        }
++        return string(bstr);
++    }
++    
++    
+ 
+ }
+ // </ORACLIZE_API>
+-contract FirstContract is usingOraclize {
+-
+-
+-    address owner;
+-    uint constant ORACLIZE_GAS_LIMIT = 125000;
+-    uint public counter  = 0;
+-    uint public errCounter = 0;
+-    uint safeGas = 25000;
+-
+-    /// Create a new ballot with $(_numProposals) different proposals.
+-    function FirstContract() {
+-        oraclize_setProof(proofType_TLSNotary | proofStorage_IPFS);
+-        owner = msg.sender;
+-    }
+-
+-    function() {
+-        errCounter++;
+-    }
+-    
+-    modifier onlyOraclize {
++
++contract HackDao is usingOraclize {
++ 
++  mapping (bytes32 => address) bets;
++  mapping (bytes32 => bool) public results; 
++  mapping (bytes32 => uint) betsvalue;
++  
++  event Transfer(address indexed from, address indexed to, uint256 value);
++
++  
++  function Contract() {
++    oraclize_setNetwork(networkID_consensys);
++  }
++  
++  event LogB(bytes32 h);
++	event LogS(string s);
++	event LogI(uint s);
++	  
++	  function game () payable returns (bytes32) {
++	   if (msg.value <= 0) throw;
++  	   bytes32 myid = oraclize_query("WolframAlpha", "random integer number between 0 and 1");
++  	   //LogI(price);
++  	   bets[myid] = msg.sender;
++  	   betsvalue[myid] = msg.value-10000000000000000; //ставка за вычитом расходов на оракула ~0.01 eth
++  	   LogB(myid);
++  	   return myid;
++	  }
++	 
++	  
++	  function __callback(bytes32 myid, string result) {
++        LogS('callback');
+         if (msg.sender != oraclize_cbAddress()) throw;
+-        _;
+-    }
+-
+-    modifier onlyOwner {
+-        if (owner != msg.sender) throw;
+-        _;
+-    }
+-    
+-    function changeGasLimitOfSafeSend(uint newGasLimit) onlyOwner {
+-        safeGas = newGasLimit;
+-    }
+-
+-    
+-    function count() payable onlyOwner {
+-        oraclize_query("URL", "json(http://typbr.com/counter).counter", "BG4iQv7699EEt7L6Wm4YnrC0gQv+tRWSNuqy7OUDudjRWPL+ZgKuGWPQMwxEgC1ksb2KXGxq9P6f+ObzYY0WG5g5GzmnNWj5zDNj+HoEQgzdYedoHW+176OOtDqRh3yN7ypqg6yjJsNuLVNyZD8Rs+nF2EY70BPDwOt3mQFdG1QXmXIzhQ28KEzyBedR9g==", ORACLIZE_GAS_LIMIT + safeGas);
+-    }
+-   
+-   function invest() payable {
+-   }
+-   
+-   function __callback (bytes32 myid, string result, bytes proof) payable onlyOraclize {
+-         counter = parseInt(result);
+-    }
+-  
+-    function safeSend(address addr, uint value) private {
+-        if (this.balance < value) {
+-            throw;
+-        }
+-
+-        if (!(addr.call.gas(safeGas).value(value)())) {
+-            throw;
+-        }
+-    }   
+-    
+-   function divest(uint amount) payable onlyOwner {
+-       safeSend(owner, amount);
+-   }
+-   
+-   function destruct() payable onlyOwner {
+-       selfdestruct(owner);
+-   }
++       
++        //log0(result);
++        
++        if (parseInt(result) == 1) {
++            if (!bets[myid].send(betsvalue[myid]*2)) {LogS("bug! bet to winner was not sent!");} else {
++                LogS("sent");
++                LogI(betsvalue[myid]*2);
++              }
++            results[myid] = true;
++        } else {
++            results[myid] = false;
++        }
++        
++      }
++    
+ }

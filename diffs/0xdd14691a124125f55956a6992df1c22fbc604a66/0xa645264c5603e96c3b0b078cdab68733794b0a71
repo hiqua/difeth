@@ -1,0 +1,99 @@
+--- 
++++ 
+@@ -473,7 +473,7 @@
+ 
+   function plus(uint a, uint b) returns (uint) {
+     uint c = a + b;
+-    assert(c>=a);
++    assert(c>=a && c>=b);
+     return c;
+   }
+ 
+@@ -500,20 +500,20 @@
+   /** List of agents that are allowed to create new tokens */
+   mapping (address => bool) public mintAgents;
+ 
+-  event MintingAgentChanged(address addr, bool state  );
+-
+   /**
+    * Create new tokens and allocate them to an address..
+    *
+    * Only callably by a crowdsale contract (mint agent).
+    */
+   function mint(address receiver, uint amount) onlyMintAgent canMint public {
++
++    if(amount == 0) {
++      throw;
++    }
++
+     totalSupply = totalSupply.plus(amount);
+     balances[receiver] = balances[receiver].plus(amount);
+-
+-    // This will make the mint transaction apper in EtherScan.io
+-    // We can remove this after there is a standardized minting event
+-    Transfer(0, receiver, amount);
++    Minted(receiver, amount);
+   }
+ 
+   /**
+@@ -521,7 +521,6 @@
+    */
+   function setMintAgent(address addr, bool state) onlyOwner canMint public {
+     mintAgents[addr] = state;
+-    MintingAgentChanged(addr, state);
+   }
+ 
+   modifier onlyMintAgent() {
+@@ -541,6 +540,7 @@
+ 
+ 
+ 
++
+ /**
+  * A crowdsaled token.
+  *
+@@ -566,14 +566,8 @@
+    * Construct the token.
+    *
+    * This token must be created through a team multisig wallet, so that it is owned by that wallet.
+-   *
+-   * @param _name Token name
+-   * @param _symbol Token symbol - should be all caps
+-   * @param _initialSupply How many tokens we start with
+-   * @param _decimals Number of decimal places
+-   * @param _mintable Are new tokens created over the crowdsale or do we distribute only the initial supply? Note that when the token becomes transferable the minting always ends.
+-   */
+-  function CrowdsaleToken(string _name, string _symbol, uint _initialSupply, uint _decimals, bool _mintable)
++   */
++  function CrowdsaleToken(string _name, string _symbol, uint _initialSupply, uint _decimals)
+     UpgradeableToken(msg.sender) {
+ 
+     // Create any address, can be transferred
+@@ -590,18 +584,6 @@
+ 
+     // Create initially all balance on the team multisig
+     balances[owner] = totalSupply;
+-
+-    if(totalSupply > 0) {
+-      Minted(owner, totalSupply);
+-    }
+-
+-    // No more new supply allowed after the token creation
+-    if(!_mintable) {
+-      mintingFinished = true;
+-      if(totalSupply == 0) {
+-        throw; // Cannot create a token without supply and no minting
+-      }
+-    }
+   }
+ 
+   /**
+@@ -616,7 +598,7 @@
+    * Allow upgrade agent functionality kick in only if the crowdsale was success.
+    */
+   function canUpgrade() public constant returns(bool) {
+-    return released && super.canUpgrade();
++    return released;
+   }
+ 
+   /**

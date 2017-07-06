@@ -1,0 +1,188 @@
+--- 
++++ 
+@@ -77,11 +77,19 @@
+  */
+ contract StandardToken is ERC20, SafeMath {
+ 
++  /* Token supply got increased and a new owner received these tokens */
++  event Minted(address receiver, uint amount);
++
++  /* Actual balances of token holders */
+   mapping(address => uint) balances;
++
++  /* approve() allowances */
+   mapping (address => mapping (address => uint)) allowed;
+ 
+-  // Interface marker
+-  bool public constant isToken = true;
++  /* Interface declaration */
++  function isToken() public constant returns (bool weAre) {
++    return true;
++  }
+ 
+   /**
+    *
+@@ -103,8 +111,8 @@
+     return true;
+   }
+ 
+-  function transferFrom(address _from, address _to, uint _value)  returns (bool success) {
+-    var _allowance = allowed[_from][msg.sender];
++  function transferFrom(address _from, address _to, uint _value) returns (bool success) {
++    uint _allowance = allowed[_from][msg.sender];
+ 
+     // Check is not needed because safeSub(_allowance, _value) will already throw if this condition is not met
+     // if (_value > _allowance) throw;
+@@ -137,6 +145,39 @@
+     return allowed[_owner][_spender];
+   }
+ 
++  /**
++   * Atomic increment of approved spending
++   *
++   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
++   *
++   */
++  function addApproval(address _spender, uint _addedValue)
++  returns (bool success) {
++      uint oldValue = allowed[msg.sender][_spender];
++      allowed[msg.sender][_spender] = safeAdd(oldValue, _addedValue);
++      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
++      return true;
++  }
++
++  /**
++   * Atomic decrement of approved spending.
++   *
++   * Works around https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
++   */
++  function subApproval(address _spender, uint _subtractedValue)
++  returns (bool success) {
++
++      uint oldVal = allowed[msg.sender][_spender];
++
++      if (_subtractedValue > oldVal) {
++          allowed[msg.sender][_spender] = 0;
++      } else {
++          allowed[msg.sender][_spender] = safeSub(oldVal, _subtractedValue);
++      }
++      Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
++      return true;
++  }
++
+ }
+ 
+ 
+@@ -180,7 +221,7 @@
+  * - Prepare a spreadsheet for token allocation
+  * - Deploy this contract, with the sum to tokens to be distributed, from the owner account
+  * - Call setInvestor for all investors from the owner account using a local script and CSV input
+- * - Move tokensToBeAllocated in this contract usign StandardToken.transfer()
++ * - Move tokensToBeAllocated in this contract using StandardToken.transfer()
+  * - Call lock from the owner account
+  * - Wait until the freeze period is over
+  * - After the freeze time is over investors can call claim() from their address to get their tokens
+@@ -261,13 +302,16 @@
+       throw;
+     }
+ 
++    // Sanity check on _tokensToBeAllocated
++    if(_tokensToBeAllocated == 0) {
++      throw;
++    }
++
+     freezeEndsAt = _freezeEndsAt;
+     tokensToBeAllocated = _tokensToBeAllocated;
+   }
+ 
+-  /**
+-   * Add a presale participatin allocation.
+-   */
++  /// @dev Add a presale participating allocation
+   function setInvestor(address investor, uint amount) public onlyOwner {
+ 
+     if(lockedAt > 0) {
+@@ -278,8 +322,7 @@
+     if(amount == 0) throw; // No empty buys
+ 
+     // Don't allow reset
+-    bool existing = balances[investor] > 0;
+-    if(existing) {
++    if(balances[investor] > 0) {
+       throw;
+     }
+ 
+@@ -292,16 +335,10 @@
+     Allocated(investor, amount);
+   }
+ 
+-  /**
+-   * Lock the vault.
+-   *
+-   *
+-   * - All balances have been loaded in correctly
+-   * - Tokens are transferred on this vault correctly
+-   *
+-   * Checks are in place to prevent creating a vault that is locked with incorrect token balances.
+-   *
+-   */
++  /// @dev Lock the vault
++  ///      - All balances have been loaded in correctly
++  ///      - Tokens are transferred on this vault correctly
++  ///      - Checks are in place to prevent creating a vault that is locked with incorrect token balances.
+   function lock() onlyOwner {
+ 
+     if(lockedAt > 0) {
+@@ -313,8 +350,7 @@
+       throw;
+     }
+ 
+-    // Do not lock the vault if the given tokens on this contract
+-    //
++    // Do not lock the vault if the given tokens are not on this contract
+     if(token.balanceOf(address(this)) != tokensAllocatedTotal) {
+       throw;
+     }
+@@ -324,9 +360,7 @@
+     Locked();
+   }
+ 
+-  /**
+-   * In the case locking failed, then allow the owner to reclaim the tokens on the contract.
+-   */
++  /// @dev In the case locking failed, then allow the owner to reclaim the tokens on the contract.
+   function recoverFailedLock() onlyOwner {
+     if(lockedAt > 0) {
+       throw;
+@@ -336,17 +370,13 @@
+     token.transfer(owner, token.balanceOf(address(this)));
+   }
+ 
+-  /**
+-   * Get the current balance of tokens in the vault.
+-   */
++  /// @dev Get the current balance of tokens in the vault
++  /// @return uint How many tokens there are currently in vault
+   function getBalance() public constant returns (uint howManyTokensCurrentlyInVault) {
+     return token.balanceOf(address(this));
+   }
+ 
+-  /**
+-   * Claim N bought tokens to the investor as the msg sender.
+-   *
+-   */
++  /// @dev Claim N bought tokens to the investor as the msg sender
+   function claim() {
+ 
+     address investor = msg.sender;
+@@ -379,9 +409,7 @@
+     Distributed(investor, amount);
+   }
+ 
+-  /**
+-   * Resolve the contract umambigious state.
+-   */
++  /// @dev Resolve the contract umambigious state
+   function getState() public constant returns(State) {
+     if(lockedAt == 0) {
+       return State.Loading;

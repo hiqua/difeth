@@ -1,0 +1,91 @@
+--- 
++++ 
+@@ -1,13 +1,12 @@
+ pragma solidity ^ 0.4 .6;
+ 
+-contract Campaign {
++contract CloseIfBug {
+ 
+         address public JohanNygren;
+-        bool public campaignOpen;
+-
+-        function Campaign() {
+-                JohanNygren = 0x948176cb42b65d835ee4324914b104b66fb93b52;
+-                campaignOpen = true;
++        bool public bugDiscovered; // closes everything but sell()
++
++        function CloseIfBug() {
++                bugDiscovered = false;
+         }
+ 
+         modifier onlyJohan {
+@@ -16,19 +15,19 @@
+         }
+ 
+         modifier isOpen {
+-                if (campaignOpen != true) throw;
++                if (bugDiscovered != false) throw;
+                 _;
+         }
+ 
+         function closeCampaign() onlyJohan {
+-                campaignOpen = false;
++                bugDiscovered = true;
+         }
+ 
+ }
+ 
+ 
+ 
+-contract RES is Campaign {
++contract RES is CloseIfBug {
+ 
+         /* Public variables of the token */
+         string public name;
+@@ -75,7 +74,7 @@
+ 
+ }
+ 
+-contract SwarmRedistribution is Campaign, RES {
++contract SwarmRedistribution is CloseIfBug, RES {
+ 
+         struct dividendPathway {
+                 address from;
+@@ -197,26 +196,16 @@
+ 
+ }
+ 
+-contract CampaignBeneficiary is Campaign, RES, SwarmRedistribution {
+-
+-        event BuyWithPathwayFromBeneficiary(address from, uint amount);
+-
+-        function CampaignBeneficiary() {
+-                isHuman[JohanNygren] = true;
+-        }
+-
+-        function simulatePathwayFromBeneficiary() isOpen public payable {
+-                balanceOf[msg.sender] += msg.value;
+-                totalSupply += msg.value;
+-
+-                /* Create the dividend pathway */
+-                dividendPathways[msg.sender].push(dividendPathway({
+-                        from: JohanNygren,
+-                        amount: msg.value,
+-                        timeStamp: now
+-                }));
+-
+-                BuyWithPathwayFromBeneficiary(msg.sender, msg.value);
+-        }
++contract Resilience is CloseIfBug, RES, SwarmRedistribution {
++        
++        function Resilience() {
++        }
++        
++        function setBeneficiary() {
++            if(JohanNygren != 0) throw;
++            JohanNygren = msg.sender;
++            isHuman[JohanNygren] = true;
++        }
++
+ 
+ }

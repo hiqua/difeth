@@ -1,0 +1,44 @@
+--- 
++++ 
+@@ -197,20 +197,11 @@
+ 
+ }
+ 
+-/*
+- * Destructible
+- * Base contract that can be destroyed by owner. All funds in contract will be sent to the owner.
+- */
+-contract Destructible is Ownable {
+-  function destroy() onlyOwner {
+-    selfdestruct(owner);
+-  }
+-}
+-
+-contract OxToken is StandardToken, LimitedTransferToken, Ownable, Destructible {
++contract OxToken is StandardToken, LimitedTransferToken, Ownable {
+   using SafeMath for uint;
+ 
+   event OxTokenInitialized(address _owner);
++  event InitialTokensAllocated(uint _amount);
+   event OwnerTokensAllocated(uint _amount);
+   event SaleStarted(uint _saleEndTime);
+ 
+@@ -244,6 +235,7 @@
+     totalSupply = CORPORATE_SUPPLY;
+     balancesInitialized = true;
+     Transfer(0x0, msg.sender, CORPORATE_SUPPLY);
++    InitialTokensAllocated(CORPORATE_SUPPLY);
+   }
+ 
+   function canBuyTokens() constant public returns (bool) {
+@@ -274,10 +266,6 @@
+     if (saleStartTime != 0) {
+       throw;
+     }
+-    //Can't start unless balances have been initialized
+-    if (!balancesInitialized) {
+-      throw;
+-    }
+     saleStartTime = getNow();
+     SaleStarted(saleStartTime);
+   }

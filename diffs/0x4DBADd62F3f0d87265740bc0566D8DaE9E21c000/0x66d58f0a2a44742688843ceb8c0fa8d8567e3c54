@@ -1,0 +1,431 @@
+--- 
++++ 
+@@ -1,273 +1,182 @@
+-contract IProxyManagement { 
+-    function isProxyLegit(address _address) returns (bool){}
+-    function raiseTransferEvent(address _from, address _to, uint _ammount){}
+-    function raiseApprovalEvent(address _sender,address _spender,uint _value){}
+-    function dedicatedProxyAddress() constant returns (address contractAddress){}
++pragma solidity ^0.4.11;
++
++// SafeMath handles math with overflow.
++contract SafeMath {
++    function safeAdd(uint256 x, uint256 y) internal returns(uint256) {
++        uint256 z = x + y;
++        assert((z >= x) && (z >= y));
++        return z;
++    }
++
++    function safeSubtract(uint256 x, uint256 y) internal returns(uint256) {
++        assert(x >= y);
++        uint256 z = x - y;
++        return z;
++    }
++
++    function safeMult(uint256 x, uint256 y) internal returns(uint256) {
++        uint256 z = x * y;
++        assert((x == 0)||(z/x == y));
++        return z;
++    }
+ }
+ 
+-contract ITokenRecipient { 
+-	function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData); 
++// Random is a block hash based random number generator.
++contract Random {
++    // Generates a random number from 0 to max based on the last block hash.
++    function getRand(uint blockNumber, uint max) constant internal returns(uint) {
++        return(uint(sha3(block.blockhash(blockNumber))) % max);
++    }
+ }
+ 
+-contract IFundManagement {
+-	function fundsCombinedValue() constant returns (uint value){}
+-    function getFundAlterations() returns (uint alterations){}
++// Manages contract ownership.
++contract Owned {
++    address public owner;
++    function owned() {
++        owner = msg.sender;
++    }
++    modifier onlyOwner {
++        if (msg.sender != owner) throw;
++        _;
++    }
++    function transferOwnership(address newOwner) onlyOwner {
++        owner = newOwner;
++    }
+ }
+ 
+-contract IERC20Token {
+-
+-    function totalSupply() constant returns (uint256 supply);
+-    function balanceOf(address _owner) constant returns (uint256 balance);
+-    function transfer(address _to, uint256 _value) returns (bool success);
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
+-    function approve(address _spender, uint256 _value) returns (bool success);
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining);
+-
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
++// DoubleOrNothing is the main public interface for gambling.
++// To gamble:
++//   Step 1: Send up to maxWagerEth ETH to this contract address.
++//   Step 2: Wait waitTimeBlocks.
++//   Step 3: Call payout() to receive your payment, if any.
++contract DoubleOrNothing {
++    // maxWagerWei is the maximum wager in Wei.
++    uint256 public maxWagerWei;
++    
++    // waitTime is the number of blocks before payout is available.
++    uint public waitTimeBlocks;
++    
++    // payoutOdds is the value / 10000 that a payee will win a wager.
++    // eg. payoutOdds of 4950 implies a 49.5% chance of winning.
++    uint public payoutOdds;
++    
++    // Wager represents one wager.
++    struct Wager {
++        address sender;
++        uint256 wagerWei;
++        uint256 creationBlockNumber;
++        bool active;
++    }
++    
++    // wagers contains all current outstanding wagers.
++    // TODO: Support multiple Wagers per address.
++    mapping (address => Wager) wagers;
++    
++    function makeWager() payable public;
++    function payout() public;
+ }
+ 
+-contract MacroTokenContract{
++contract DoubleOrNothingImpl is DoubleOrNothing, Owned, Random, SafeMath {
+     
+-    address public dev;
+-    address public curator;
+-    address public mintingContractAddress;
+-    address public destructionContractAddress;
+-    uint256 public totalSupply = 0;
+-    bool public lockdown = false;
+-
+-    string public standard = 'Macro token';
+-    string public name = 'Macro';
+-    string public symbol = 'MCR';
+-    uint8 public decimals = 8;
+-
+-    mapping (address => uint256) balances;
+-    mapping (address => mapping (address => uint256)) allowed;
+-    IProxyManagement proxyManagementContract;
+-    IFundManagement fundManagementContract;
+-
+-    uint public weiForMcr;
+-    uint public mcrAmmountForGas;
+-
+-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+-    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+-    event Mint(address _destination, uint _amount);
+-    event Destroy(address _destination, uint _amount);
+-    event McrForGasFailed(address _failedAddress, uint _ammount);
+-
+-    function MacroTokenContract() { 
+-        dev = msg.sender;
++    // Initialize state by assigning the owner to the contract deployer.
++    function DoubleOrNothingImpl() {
++        owner = msg.sender;
++        maxWagerWei = 100000000000000000;
++        waitTimeBlocks = 2;
++        payoutOdds = 4950;
+     }
+     
+-    function balanceOf(address _owner) constant returns (uint256 balance) {
+-        return balances[_owner];
+-    }
+-
+-    function transfer(address _to, uint256 _value) returns (bool success){
+-        if(balances[msg.sender] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(lockdown) throw;
+-
+-        balances[msg.sender] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, msg.sender, _to, _value);              
+-        return true;
+-    }
+-
+-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+-        if(balances[_from] < _value) throw;
+-        if(balances[_to] + _value <= balances[_to]) throw;
+-        if(_value > allowed[_from][msg.sender]) throw;
+-        if(lockdown) throw;
+-
+-        balances[_from] -= _value;
+-        balances[_to] += _value;
+-        createTransferEvent(true, _from, _to, _value);
+-        allowed[_from][msg.sender] -= _value;
+-        return true;
+-    }
+-
+-    function approve(address _spender, uint256 _value) returns (bool success) {
+-        if(lockdown) throw;
+-        
+-        allowed[msg.sender][_spender] = _value;
+-        createApprovalEvent(true, msg.sender, _spender, _value);
+-        return true;
+-    }
+-
+-    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
+-      return allowed[_owner][_spender];
+-    }
+-
+-    function transferViaProxy(address _source, address _to, uint256 _amount) returns (bool success){
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_source] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-
+-        balances[_source] -= _amount;
+-        balances[_to] += _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
++    // Allow the owner to set maxWagerWei.
++    function setMaxWagerWei(uint256 maxWager) public onlyOwner {
++        maxWagerWei = maxWager;
+     }
+     
+-    function transferFromViaProxy(address _source, address _from, address _to, uint256 _amount) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if (balances[_from] < _amount) throw;
+-        if (balances[_to] + _amount <= balances[_to]) throw;
+-        if (lockdown) throw;
+-        if (_amount > allowed[_from][_source]) throw;
+-
+-        balances[_from] -= _amount;
+-        balances[_to] += _amount;
+-        allowed[_from][_source] -= _amount;
+-
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createTransferEvent(false, _source, _to, _amount); 
+-        }else{
+-            createTransferEvent(true, _source, _to, _amount); 
+-        }
+-        return true;
++    // Allow the owner to set waitTimeBlocks.
++    function setWaitTimeBlocks(uint waitTime) public onlyOwner {
++        waitTimeBlocks = waitTime;
+     }
+     
+-    function approveViaProxy(address _source, address _spender, uint256 _value) returns (bool success) {
+-        if (!proxyManagementContract.isProxyLegit(msg.sender)) throw;
+-        if(lockdown) throw;
+-        
+-        allowed[_source][_spender] = _value;
+-        if (msg.sender == proxyManagementContract.dedicatedProxyAddress()){
+-            createApprovalEvent(false, _source, _spender, _value);
+-        }else{
+-            createApprovalEvent(true, _source, _spender, _value);
+-        }
+-        return true;
+-    }
+-
+-    function mint(address _destination, uint _amount) returns (bool success){
+-        if (msg.sender != mintingContractAddress) throw;
+-        if(balances[_destination] + _amount < balances[_destination]) throw;
+-        if(totalSupply + _amount < totalSupply) throw;
+-
+-        totalSupply += _amount;
+-        balances[_destination] += _amount;
+-        Mint(_destination, _amount);
+-        createTransferEvent(true, 0x0, _destination, _amount);
+-        return true;
+-    }
+-
+-    function destroy(address _destination, uint _amount) returns (bool success) {
+-        if (msg.sender != destructionContractAddress) throw;
+-        if (balances[_destination] < _amount) throw;
+-
+-        totalSupply -= _amount;
+-        balances[_destination] -= _amount;
+-        Destroy(_destination, _amount);
+-        createTransferEvent(true, _destination, 0x0, _amount);
+-        return true;
+-    }
+-
+-    function setTokenCurator(address _curatorAddress){
+-        if( msg.sender != dev) throw;
+-        curator = _curatorAddress;
++    // Allow the owner to set payoutOdds.
++    function setPayoutOdds(uint odds) public onlyOwner {
++        payoutOdds = odds;
+     }
+     
+-    function setMintingContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        mintingContractAddress = _contractAddress;
+-    }
+-
+-    function setDescrutionContractAddress(address _contractAddress){ 
+-        if (msg.sender != curator) throw;
+-        destructionContractAddress = _contractAddress;
+-    }
+-
+-    function setProxyManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        proxyManagementContract = IProxyManagement(_contractAddress);
+-    }
+-
+-    function setFundManagementContract(address _contractAddress){
+-        if (msg.sender != curator) throw;
+-        fundManagementContract = IFundManagement(_contractAddress);
+-    }
+-
+-    function emergencyLock() {
+-        if (msg.sender != curator && msg.sender != dev) throw;
+-        
+-        lockdown = !lockdown;
+-    }
+-
+-    function killContract(){
+-        if (msg.sender != dev) throw;
+-        selfdestruct(dev);
+-    }
+-
+-    function setWeiForMcr(uint _value){
+-        if (msg.sender != curator) throw;
+-        weiForMcr = _value;
++    // Allow the owner to cash out the holdings of this contract.
++    function withdraw(address recipient, uint256 balance) public onlyOwner {
++        recipient.transfer(balance);
+     }
+     
+-    function setMcrAmountForGas(uint _value){
+-        if (msg.sender != curator) throw;
+-        mcrAmmountForGas = _value;
++    // Allow the owner to payout outstanding wagers on others' behalf.
++    function ownerPayout(address wager_owner) public onlyOwner {
++        _payout(wager_owner);
+     }
+-
+-    function getGasForMcr(){
+-        if (balances[msg.sender] < mcrAmmountForGas) throw;
+-        if (balances[curator] > balances[curator] + mcrAmmountForGas) throw;
+-        if (this.balance < weiForMcr * mcrAmmountForGas) throw;
+-
+-        balances[msg.sender] -= mcrAmmountForGas;
+-        balances[curator] += mcrAmmountForGas;
+-        createTransferEvent(true, msg.sender, curator, weiForMcr * mcrAmmountForGas);
+-        if (!msg.sender.send(weiForMcr * mcrAmmountForGas)) {
+-            McrForGasFailed(msg.sender, weiForMcr * mcrAmmountForGas);
++    
++    // Assume that simple transactions are trying to make a wager, unless it is
++    // from the owner.
++    function () payable public {
++        if (msg.sender != owner) {
++            makeWager();
+         }
+     }
+-
+-    function fundManagementAddress() constant returns (address fundManagementAddress){
+-        return address(fundManagementContract);
+-    }
+-
+-    function proxyManagementAddress() constant returns (address proxyManagementAddress){
+-        return address(proxyManagementContract);
+-    }
+-
+-    function fundsCombinedValue() constant returns (uint value){
+-        return fundManagementContract.fundsCombinedValue();
+-    }
+-
+-    function getGasForMcrData() constant returns (uint, uint){
+-        return (weiForMcr, mcrAmmountForGas);
+-    }
+-
+-    function approveAndCall(address _spender, uint256 _value, bytes _extraData) returns (bool success) {
+-        allowed[msg.sender][_spender] = _value;
+-        ITokenRecipient spender = ITokenRecipient(_spender);
+-        spender.receiveApproval(msg.sender, _value, this, _extraData);
+-        return true;
+-    }
+-
+-    function createTransferEvent(bool _relayEvent, address _from, address _to, uint256 _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseTransferEvent(_from, _to, _value);
++    
++    // Make a wager.
++    function makeWager() payable public {
++        if (msg.value == 0 || msg.value > maxWagerWei) throw;
++        if (wagers[msg.sender].active) {
++            // A Wager already exists for this user.
++            throw;
+         }
+-        Transfer(_from, _to, _value);
+-    }
+-
+-    function createApprovalEvent(bool _relayEvent, address _sender, address _spender, uint _value) internal {
+-        if (_relayEvent){
+-            proxyManagementContract.raiseApprovalEvent(_sender, _spender, _value);
+-        }
+-        Approval(_sender, _spender, _value);
++        wagers[msg.sender] = Wager({
++            sender: msg.sender,
++            wagerWei: msg.value,
++            creationBlockNumber: block.number,
++            active: true,
++        });
+     }
+     
+-    function fillContract() payable{
+-        if (msg.sender != curator) throw;
++    // View your wager.
++    function getMyWager() constant public returns (
++        uint256 wagerWei,
++        uint creationBlockNumber,
++        bool active) {
++        return getWager(msg.sender);
++    }
++    
++    // View the wager for a given address.
++    function getWager(address wager_owner) constant public returns (
++        uint256 wagerWei,
++        uint creationBlockNumber,
++        bool active) {
++        Wager thisWager = wagers[wager_owner];
++        return (thisWager.wagerWei, thisWager.creationBlockNumber, thisWager.active);
++    }
++    
++    // Payout any wagers associated with the sending address.
++    function payout() public {
++        _payout(msg.sender);
++    }
++    
++    // Internal implementation of payout().
++    function _payout(address wager_owner) internal {
++        if (!wagers[wager_owner].active) {
++            // No outstanding active Wager.
++            throw;
++        }
++        uint256 blockDepth = block.number - wagers[wager_owner].creationBlockNumber;
++        if (blockDepth > waitTimeBlocks) {
++            // waitTimeBlocks has passed, resolve and payout this wager.
++            uint256 payoutBlock = wagers[wager_owner].creationBlockNumber + waitTimeBlocks - 1;
++            uint randNum = getRand(payoutBlock, 10000);
++            if (randNum < payoutOdds) {
++                // Wager wins, payout wager.
++                uint256 winnings = safeMult(wagers[wager_owner].wagerWei, 2);
++                if (wagers[wager_owner].sender.send(winnings)) {
++                    wagers[wager_owner].active = false;
++                }
++            } else {
++                // Wager loses, disable wager.
++                wagers[wager_owner].active = false;
++            }
++        }
+     }
+ }

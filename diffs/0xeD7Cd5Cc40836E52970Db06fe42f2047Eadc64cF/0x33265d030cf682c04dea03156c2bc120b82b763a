@@ -1,0 +1,30 @@
+--- 
++++ 
+@@ -1,8 +1,4 @@
+-pragma solidity ^0.4.0;
+-
+-
+-
+-contract Tfarm {
++contract WorldReserveCurrency {
+     /* Public variables of the token */
+     string public standard = 'Token 0.1';
+     string public name;
+@@ -16,12 +12,12 @@
+ 
+   
+     /* Initializes contract with initial supply tokens to the creator of the contract */
+-    function Tfarm() {
++    function WorldReserveCurrency() {
+ 
+-         initialSupply = 210000000;
+-         name ="tfarm";
+-        decimals = 2;
+-         symbol = "^";
++         initialSupply = 1540000000;
++         name ="worldreservecurrency";
++        decimals = 8;
++         symbol = "wrc";
+         
+         balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
+         uint256 totalSupply = initialSupply;                        // Update total supply

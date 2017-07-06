@@ -1,0 +1,356 @@
+--- 
++++ 
+@@ -1,206 +1,186 @@
++// Dr. Sebastian Buergel, Validity Labs AG
+ pragma solidity ^0.4.11;
+ 
+-/*
+-  Allows buyers to securely/confidently buy recent ICO tokens that are
+-  still non-transferrable, on an IOU basis. Like HitBTC, but with protection,
+-  control, and guarantee of either the purchased tokens or ETH refunded.
++/**
++ * @title Ownable
++ * @dev The Ownable contract has an owner address, and provides basic authorization control 
++ * functions, this simplifies the implementation of "user permissions". 
++ */
++contract Ownable {
++  address public owner;
+ 
+-  The Buyer's ETH will be locked into the contract until the purchased
+-  IOU/tokens arrive here and are ready for the buyer to invoke withdraw(),
+-  OR until cut-off time defined below is exceeded and as a result ETH
+-  refunds/withdrawals become enabled.
+ 
+-  In other words, the seller must fulfill the IOU token purchases any time
+-  before the cut-off time defined below, otherwise the buyer gains the
+-  ability to withdraw their ETH.
++  /** 
++   * @dev The Ownable constructor sets the original `owner` of the contract to the sender
++   * account.
++   */
++  function Ownable() {
++    owner = msg.sender;
++  }
+ 
+-  The buyer's ETH will ONLY be released to the seller AFTER the adequate
+-  amount of tokens have been deposited for ALL purchases.
+ 
+-  Estimated Time of Distribution: 3-5 weeks from ICO according to TenX
+-  Cut-off Time: ~ August 9, 2017
++  /**
++   * @dev Throws if called by any account other than the owner. 
++   */
++  modifier onlyOwner() {
++    if (msg.sender != owner) {
++      throw;
++    }
++    _;
++  }
+ 
+-  Greetz: blast
+-  foobarbizarre@gmail.com (Please report any findings or suggestions for a 1 ETH bounty!)
+ 
+-  Thank you
+-*/
++  /**
++   * @dev Allows the current owner to transfer control of the contract to a newOwner.
++   * @param newOwner The address to transfer ownership to. 
++   */
++  function transferOwnership(address newOwner) onlyOwner {
++    if (newOwner != address(0)) {
++      owner = newOwner;
++    }
++  }
+ 
+-contract ERC20 {
+-  function transfer(address _to, uint _value);
+-  function balanceOf(address _owner) constant returns (uint balance);
+ }
+ 
+-contract IOU {
+-  // Store the amount of IOUs purchased by a buyer
+-  mapping (address => uint256) public iou_purchased;
+ 
+-  // Store the amount of ETH sent in by a buyer
+-  mapping (address => uint256) public eth_sent;
+ 
+-  // Total IOUs available to sell
+-  uint256 public total_iou_available = 40000000000000000000000;
++contract Token {
++    /* This is a slight change to the ERC20 base standard.
++    function totalSupply() constant returns (uint256 supply);
++    is replaced with:
++    uint256 public totalSupply;
++    This automatically creates a getter function for the totalSupply.
++    This is moved to the base contract since public getter functions are not
++    currently recognised as an implementation of the matching abstract
++    function by the compiler.
++    */
++    /// total amount of tokens
++    uint256 public totalSupply;
+ 
+-  // Total IOUs purchased by all buyers
+-  uint256 public total_iou_purchased;
++    /// @param _owner The address from which the balance will be retrieved
++    /// @return The balance
++    function balanceOf(address _owner) constant returns (uint256 balance);
+ 
+-  // Total IOU withdrawn by all buyers (keep track to protect buyers)
+-  uint256 public total_iou_withdrawn;
++    /// @notice send `_value` token to `_to` from `msg.sender`
++    /// @param _to The address of the recipient
++    /// @param _value The amount of token to be transferred
++    /// @return Whether the transfer was successful or not
++    function transfer(address _to, uint256 _value) returns (bool success);
+ 
+-  // IOU per ETH (price)
+-  uint256 public price_per_eth = 100;
++    /// @notice send `_value` token to `_to` from `_from` on the condition it is approved by `_from`
++    /// @param _from The address of the sender
++    /// @param _to The address of the recipient
++    /// @param _value The amount of token to be transferred
++    /// @return Whether the transfer was successful or not
++    function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
+ 
+-  //  PAY token contract address (IOU offering)
+-  ERC20 public token = ERC20(0xB97048628DB6B661D4C2aA833e95Dbe1A905B280);
++    /// @notice `msg.sender` approves `_spender` to spend `_value` tokens
++    /// @param _spender The address of the account able to transfer the tokens
++    /// @param _value The amount of tokens to be approved for transfer
++    /// @return Whether the approval was successful or not
++    function approve(address _spender, uint256 _value) returns (bool success);
+ 
+-  // The seller's address (to receive ETH upon distribution, and for authing safeties)
+-  address seller = 0x496529c12e229e9787D37E5EFA2E48B651e755B0;
++    /// @param _owner The address of the account owning tokens
++    /// @param _spender The address of the account able to transfer the tokens
++    /// @return Amount of remaining tokens allowed to spent
++    function allowance(address _owner, address _spender) constant returns (uint256 remaining);
+ 
+-  // Halt further purchase ability just in case
+-  bool public halt_purchases;
++    event Transfer(address indexed _from, address indexed _to, uint256 _value);
++    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
++}
+ 
+-  modifier pwner() { if(msg.sender != seller) throw; _; }
+ 
+-  /*
+-    Safety to withdraw unbought tokens back to seller. Ensures the amount
+-    that buyers still need to withdraw remains available
+-  */
+-  function withdrawTokens() pwner {
+-    token.transfer(seller, token.balanceOf(address(this)) - (total_iou_purchased - total_iou_withdrawn));
+-  }
+ 
+-  /*
+-    Safety to prevent anymore purchases/sales from occurring in the event of
+-    unforeseen issue. Buyer withdrawals still remain enabled.
+-  */
+-  function haltPurchases() pwner {
+-    halt_purchases = true;
+-  }
++contract StandardToken is Token {
+ 
+-  function resumePurchases() pwner {
+-    halt_purchases = false;
+-  }
+-
+-  /*
+-    Update available IOU to purchase
+-  */
+-  function updateAvailability(uint256 _iou_amount) pwner {
+-    if(_iou_amount < total_iou_purchased) throw;
+-
+-    total_iou_available = _iou_amount;
+-  }
+-
+-  /*
+-    Update IOU price
+-  */
+-  function updatePrice(uint256 _price) pwner {
+-    price_per_eth = _price;
+-  }
+-
+-  /*
+-    Release buyer's ETH to seller ONLY if amount of contract's tokens balance
+-    is >= to the amount that still needs to be withdrawn. Protects buyer.
+-
+-    The seller must call this function manually after depositing the adequate
+-    amount of tokens for all buyers to collect
+-
+-    This effectively ends the sale, but withdrawals remain open
+-  */
+-  function paySeller() pwner {
+-    // not enough tokens in balance to release ETH, protect buyer and abort
+-    if(token.balanceOf(address(this)) < (total_iou_purchased - total_iou_withdrawn)) throw;
+-
+-    // Halt further purchases to prevent accidental over-selling
+-    halt_purchases = true;
+-
+-    // Release buyer's ETH to the seller
+-    seller.transfer(this.balance);
+-  }
+-
+-  function withdraw() payable {
+-    /*
+-      Main mechanism to ensure a buyer's purchase/ETH/IOU is safe.
+-
+-      Refund the buyer's ETH if we're beyond the cut-off date of our distribution
+-      promise AND if the contract doesn't have an adequate amount of tokens
+-      to distribute to the buyer. Time-sensitive buyer/ETH protection is only
+-      applicable if the contract doesn't have adequate tokens for the buyer.
+-
+-      The "adequacy" check prevents the seller and/or third party attacker
+-      from locking down buyers' ETH by sending in an arbitrary amount of tokens.
+-
+-      If for whatever reason the tokens remain locked for an unexpected period
+-      beyond the time defined by block.number, patient buyers may still wait until
+-      the contract is filled with their purchased IOUs/tokens. Once the tokens
+-      are here, they can initiate a withdraw() to retrieve their tokens. Attempting
+-      to withdraw any sooner (after the block has been mined, but tokens not arrived)
+-      will result in a refund of buyer's ETH.
+-    */
+-    if(block.number > 4199999 && iou_purchased[msg.sender] > token.balanceOf(address(this))) {
+-      // We didn't fulfill our promise to have adequate tokens withdrawable at xx time
+-      // Refund the buyer's ETH automatically instead
+-      uint256 eth_to_refund = eth_sent[msg.sender];
+-
+-      // If the user doesn't have any ETH or tokens to withdraw, get out ASAP
+-      if(eth_to_refund == 0 || iou_purchased[msg.sender] == 0) throw;
+-
+-      // Adjust total purchased so others can buy, and so numbers align with total_iou_withdrawn
+-      total_iou_purchased -= iou_purchased[msg.sender];
+-
+-      // Clear record of buyer's ETH and IOU balance before refunding
+-      eth_sent[msg.sender] = 0;
+-      iou_purchased[msg.sender] = 0;
+-
+-      msg.sender.transfer(eth_to_refund);
+-      return;
++    function transfer(address _to, uint256 _value) returns (bool success) {
++        //Default assumes totalSupply can't be over max (2^256 - 1).
++        //If your token leaves out totalSupply and can issue more tokens as time goes on, you need to check if it doesn't wrap.
++        //Replace the if with this one instead.
++        //if (balances[msg.sender] >= _value && balances[_to] + _value > balances[_to]) {
++        if (balances[msg.sender] >= _value && _value > 0) {
++            balances[msg.sender] -= _value;
++            balances[_to] += _value;
++            Transfer(msg.sender, _to, _value);
++            return true;
++        } else { return false; }
+     }
+ 
+-    /*
+-      Check if there is an adequate amount of tokens in the contract yet
+-      and allow the buyer to withdraw tokens
+-    */
+-    if(token.balanceOf(address(this)) == 0 || iou_purchased[msg.sender] > token.balanceOf(address(this))) throw;
++    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
++        //same as above. Replace this line with the following if you want to protect against wrapping uints.
++        //if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && balances[_to] + _value > balances[_to]) {
++        if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && _value > 0) {
++            balances[_to] += _value;
++            balances[_from] -= _value;
++            allowed[_from][msg.sender] -= _value;
++            Transfer(_from, _to, _value);
++            return true;
++        } else { return false; }
++    }
+ 
+-    uint256 iou_to_withdraw = iou_purchased[msg.sender];
++    function balanceOf(address _owner) constant returns (uint256 balance) {
++        return balances[_owner];
++    }
+ 
+-    // If the user doesn't have any IOUs to withdraw, get out ASAP
+-    if(iou_to_withdraw == 0) throw;
++    function approve(address _spender, uint256 _value) returns (bool success) {
++        allowed[msg.sender][_spender] = _value;
++        Approval(msg.sender, _spender, _value);
++        return true;
++    }
+ 
+-    // Clear record of buyer's IOU and ETH balance before transferring out
+-    iou_purchased[msg.sender] = 0;
+-    eth_sent[msg.sender] = 0;
++    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
++      return allowed[_owner][_spender];
++    }
+ 
+-    total_iou_withdrawn += iou_to_withdraw;
++    mapping (address => uint256) balances;
++    mapping (address => mapping (address => uint256)) allowed;
++}
+ 
+-    // Distribute tokens to the buyer
+-    token.transfer(msg.sender, iou_to_withdraw);
+-  }
+ 
+-  function purchase() payable {
+-    if(halt_purchases) throw;
+-    if(msg.value == 0) throw;
+ 
+-    // Determine amount of tokens user wants to/can buy
+-    uint256 iou_to_purchase = price_per_eth * msg.value;
++// wraps non-ERC20-conforming fundraising contracts (aka pure IOU ICO) in a standard ERC20 contract that is immediately tradable and usable via default tools.
++// this is again a pure IOU token but now having all the benefits of standard tokens.
++contract ERC20nator is StandardToken, Ownable {
+ 
+-    // Check if we have enough IOUs left to sell
+-    if((total_iou_purchased + iou_to_purchase) > total_iou_available) throw;
++    address public fundraiserAddress;
+ 
+-    // Update the amount of IOUs purchased by user. Also keep track of the total ETH they sent in
+-    iou_purchased[msg.sender] += iou_to_purchase;
+-    eth_sent[msg.sender] += msg.value;
++    uint constant issueFeePercent = 10; // fee in percent that is collected for all paid in funds
+ 
+-    // Update the total amount of IOUs purchased by all buyers
+-    total_iou_purchased += iou_to_purchase;
+-  }
++    event requestedRedeem(address indexed requestor, uint amount);
++    
++    event redeemed(address redeemer, uint amount);
+ 
+-  // Fallback function/entry point
+-  function () payable {
+-    if(msg.value == 0) {
+-      withdraw();
++    // fallback function invests in fundraiser
++    // fee percentage is given to owner for providing this service
++    // remainder is invested in fundraiser
++    function() payable {
++        uint issuedTokens = msg.value * (100 - issueFeePercent) / 100;
++
++        // invest 90% into fundraiser
++        if(!fundraiserAddress.send(issuedTokens))
++            throw;
++
++        // pay 10% to owner
++        if(!owner.send(msg.value - issuedTokens))
++            throw;
++        
++        // issue tokens by increasing total supply and balance
++        totalSupply += issuedTokens;
++        balances[msg.sender] += issuedTokens;
+     }
+-    else {
+-      purchase();
++
++    // allow owner to set fundraiser target address
++    function setFundraiserAddress(address _fundraiserAddress) onlyOwner {
++        fundraiserAddress = _fundraiserAddress;
+     }
+-  }
++
++    // this is just to inform the owner that a user wants to redeem some of their IOU tokens
++    function requestRedeem(uint amount) {
++        requestedRedeem(msg.sender, amount);
++    }
++
++    // this is just to inform the investor that the owner redeemed some of their IOU tokens
++    function redeem(uint amount) onlyOwner{
++        redeemed(msg.sender, amount);
++    }
+ }

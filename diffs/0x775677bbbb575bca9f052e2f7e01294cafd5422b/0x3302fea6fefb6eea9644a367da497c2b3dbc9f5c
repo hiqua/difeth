@@ -1,0 +1,21 @@
+--- 
++++ 
+@@ -35,7 +35,7 @@
+ 
+ contract PresalerVoting {
+ 
+-    string public constant VERSION = "0.0.3";
++    string public constant VERSION = "0.0.2";
+ 
+     /* ====== configuration START ====== */
+ 
+@@ -67,8 +67,7 @@
+     onlyState(State.VOTING_RUNNING)
+     payable {
+         if (msg.value > 1 ether || !msg.sender.send(msg.value)) throw;
+-        //special treatment for 0-ether payments
+-        rawVotes[msg.sender] = msg.value > 0 ? msg.value : 1 wei;
++        rawVotes[msg.sender] = msg.value;
+     }
+ 
+     /// @notice start voting at `startBlockNr` for `durationHrs`.

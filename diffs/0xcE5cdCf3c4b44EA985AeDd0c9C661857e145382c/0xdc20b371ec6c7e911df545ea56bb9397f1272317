@@ -1,0 +1,26 @@
+--- 
++++ 
+@@ -1,4 +1,4 @@
+-pragma solidity 0.4.11;
++pragma solidity ^0.4.0;
+ 
+ contract Fundraiser {
+ 
+@@ -6,7 +6,7 @@
+ 
+   address signer1;
+   address signer2;
+-  bool public accept; // are contributions accepted
++  bool accept; // are contributions accepted
+ 
+   enum Action {
+     None,
+@@ -27,7 +27,7 @@
+   /* Constructor, choose signers. Those cannot be changed */
+   function Fundraiser(address init_signer1,
+                       address init_signer2) {
+-    accept = false; // must call Open first
++    accept = true;
+     signer1 = init_signer1;
+     signer2 = init_signer2;
+     signer1_proposal.action = Action.None;
