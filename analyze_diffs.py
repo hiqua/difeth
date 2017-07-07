@@ -1,4 +1,5 @@
 import os
+import shutil
 from pprint import pprint
 from colorama import Fore, Style
 
@@ -20,7 +21,7 @@ def find_diffs(min_size, max_size, folder="diffs"):
         for fn in filter(is_diff, fns):
             full_path = os.path.join(curr_dir, fn)
             size = os.path.getsize(full_path)
-            if min_size <= size and size < max_size:
+            if min_size <= size < max_size:
                 yield (full_path, size)
 
 
@@ -88,6 +89,19 @@ def display_batch(min_size, max_size):
             break
 
 
+def copy_diffs(saved_diff_fn, output_dir="interesting_diffs"):
+    os.makedirs(output_dir, exist_ok=True)
+    with open("interesting_diffs.txt") as fs:
+        for fn in fs:
+            fn = fn[:len(fn)-1]
+            dest_name = os.path.split(fn)[-1]
+            dest_file = os.path.join(output_dir, dest_name)
+            if os.path.exists(dest_file):
+                dest_file += "_0"
+
+            shutil.copy2(fn, dest_file)
+
+
 if __name__ == '__main__':
     MIN_SIZE = 0000
     STEP = 10000
@@ -97,3 +111,5 @@ if __name__ == '__main__':
     for diff_fn in display_batch(MIN_SIZE, MIN_SIZE + STEP):
         with open(saved_diff_fn, 'a') as fs:
             fs.write(diff_fn + '\n')
+
+    copy_diffs(saved_diff_fn=saved_diff_fn)
