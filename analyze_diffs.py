@@ -1,21 +1,26 @@
 import os
 import shutil
 from pprint import pprint
+
 from colorama import Fore, Style
 
 
 def reset_style():
+    """Reset colors
+    """
     print(Style.RESET_ALL, end='')
 
 
 def is_diff(fn):
+    """Tells if the file a diff, or full code.
+    """
     return not fn.endswith("_code")
 
 
 def find_diffs(min_size, max_size, folder="diffs"):
     """Return diff with size in the interval
 
-    sizes are given in bytes
+    Sizes are given in bytes.
     """
     for (curr_dir, sub_dir, fns) in os.walk(folder):
         for fn in filter(is_diff, fns):
@@ -26,6 +31,8 @@ def find_diffs(min_size, max_size, folder="diffs"):
 
 
 def get_color(line):
+    """Returns the color to add to this line.
+    """
     color = ''
     if line == '---' or line == '+++':
         color = Fore.GREEN
@@ -39,15 +46,16 @@ def get_color(line):
     return color
 
 
-def print_diff(path):
-    with open(path) as fs:
+def print_diff(diff_fn):
+    """Print the given diff with some syntax highlighting.
+    """
+    with open(diff_fn) as fs:
         for line in fs:
             # remove trailing \n
             line = line[:len(line) - 1]
             color = get_color(line)
-            reset_style()
             print(color + line)
-    reset_style()
+            reset_style()
 
 
 def unzip(l):
@@ -55,6 +63,8 @@ def unzip(l):
 
 
 def display_batch(min_size, max_size):
+    """Display interactively the diffs of size in [min_size, max_size)
+    """
     tmp = unzip(sorted(find_diffs(min_size, max_size), key=lambda a: a[1]))
     assert len(tmp) == 2
     diff_fns, sizes = tmp[0], tmp[1]
@@ -91,7 +101,7 @@ def display_batch(min_size, max_size):
 
 def copy_diffs(saved_diff_fn, output_dir="interesting_diffs"):
     os.makedirs(output_dir, exist_ok=True)
-    with open("interesting_diffs.txt") as fs:
+    with open(saved_diff_fn) as fs:
         for fn in fs:
             fn = fn[:len(fn)-1]
             dest_name = os.path.split(fn)[-1]

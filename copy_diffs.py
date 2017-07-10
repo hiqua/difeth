@@ -1,6 +1,7 @@
 import os
 import shutil
 
+
 def copy_diffs(output_dir = "int_diffs"):
     os.makedirs(output_dir, exist_ok=True)
     with open("interesting_diffs.txt") as fs:
@@ -15,4 +16,3 @@ def copy_diffs(output_dir = "int_diffs"):
 
 if __name__ == '__main__':
     copy_diffs()
-

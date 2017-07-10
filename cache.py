@@ -1,5 +1,8 @@
+import hashlib
 import logging
+import os
 import pickle
+import threading
 
 _activate_cache = True
 
@@ -64,3 +67,26 @@ def always_cache(func, var_p=None, hook=None):
     if var_p is None:
         var_p = "pickle.d/" + func.__name__ + ".p"
     return pickle_cache_witness(func, var_p, (lambda _: True), hook=hook)
+
+
+_lock = threading.Lock()
+
+
+def cache_func_and_arg(func):
+    def get_hash(var):
+        return hashlib.md5(str(var).encode('utf8')).hexdigest()
+
+    def new_func(arg):
+        var_p = os.path.join("pickle.d",
+                             func.__name__ + "_" + get_hash(arg) + ".p")
+        if os.path.exists(var_p):
+            with _lock:
+                with open(var_p, 'rb') as fs:
+                    return pickle.load(fs)
+        else:
+            res = func(arg)
+            with _lock:
+                with open(var_p, 'wb') as fs:
+                    pickle.dump(res, fs)
+            return res
+    return new_func

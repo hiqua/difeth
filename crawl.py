@@ -4,40 +4,63 @@ addresses are used as strings
 
 XXX: mirror etherscan locally
 """
+import datetime
 import difflib
+import itertools
 import logging
 import os
-import urllib.request
-from functools import lru_cache, partialmethod
-import itertools
+from functools import partialmethod
+from multiprocessing import Pool
 from pprint import pprint
+from ssl import SSLError
 
+import requests
 from bs4 import BeautifulSoup
 
-from cache import always_cache
+from cache import always_cache, cache_func_and_arg
+from cachecontrol import CacheControl
 from solc import compile_source
 from solc.exceptions import SolcError
 
 verified_url = "https://etherscan.io/contractsVerified"
 
+session = CacheControl(requests.session())
 
-@lru_cache(maxsize=None)
-def fetch(url):
-    """Fetch and decode the url
+
+def fetch(url, nb_attempts=5):
+    """Fetch the url
+
+    From time to time, the ssl modules raises SSLError for some reason.
+    Retrying usually works as a workaround, so we do that.
     """
-    # logging.debug("Fetching url: {}".format(url))
-    logging.debug("Fetching url: %s", url)
-    request = urllib.request.Request(url)
-    request.add_header('User-Agent',
-                       'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)')
-    url_fs = urllib.request.urlopen(request)
-    return url_fs.read().decode("utf8")
+    def _fetch():
+        request = session.get(url)
+        if not request:
+            logging.warning("Got status code: %s", request.status_code)
+        request.raise_for_status()
+        return request.text
+
+    for _ in range(nb_attempts):
+        try:
+            return _fetch()
+        except (SSLError, requests.exceptions.RequestException) as e:
+            logging.warning(e)
+
+    logging.error('Page %s could not be fetched, returning ""', url)
+    return ""
 
 
 def same_code(a_src, b_src):
-    """Returns whether a_src and b_src have the same code by compiling them.
+    """Whether a_src and b_src have the same code by compiling them.
 
     On compiler failure, assume they are different.
+
+    Args:
+        a_src: the first source code.
+        b_src: the second source code.
+
+    Return:
+        a boolean that says whether the source code are equivalent.
     """
     try:
         return compile_source(a_src) == compile_source(b_src)
@@ -46,29 +69,43 @@ def same_code(a_src, b_src):
         return False
 
 
+@cache_func_and_arg
 def extract_code(address):
-    """Extract the code for one address
+    """Extract the Solidity code for one verified address.
+
+    Args:
+        address: the ETH address to extract code from.
+
+    Returns:
+        the Solidity code of this address.
+
+    Raises:
+        ValueError: if the Solidity code could not be extracted.
     """
     url = "https://etherscan.io/address/{}#code".format(address)
     content = fetch(url)
     soup = BeautifulSoup(content, 'html.parser')
     soli_code = soup.find(id='editor')
     if soli_code is None:
-        raise ValueError("Solidity code not found")
+        raise ValueError("Solidity code not found for: {}".format(address))
     return soli_code.getText().replace("\r", "")
 
 
 def extract_solidity_code(addresses):
-    """Extract solidity code from addresses
+    """Extract solidity code from addresses.
 
-    Return a dict addr => code
+    Args:
+        addresses: an iterator of addresses
+
+    Returns:
+        a dict mapping an address to its code, if found.
     """
     code = dict()
     for addr in addresses:
         try:
             code[addr] = extract_code(addr)
-        except ValueError:
-            logging.info("Solidity code not found for %s, skipping", addr)
+        except ValueError as e:
+            logging.info("%s", str(e))
 
     return code
 
@@ -84,6 +121,7 @@ def nb_verified():
     return (curr_page, total_page)
 
 
+@cache_func_and_arg
 def extract_address_tags(url):
     """Extract the addresses in the address-tag
     """
@@ -127,13 +165,15 @@ def find_similar(addr):
     logging.debug("Finding contracts similar to %s", addr)
     base_url = "https://etherscan.io/find-similiar-contracts?a="
     url = base_url + addr
-    return extract_address_tags(url)
+    res = extract_address_tags(url)
+    logging.debug("Found %s similar addresses", len(res))
+    return res
 
 
 def find_similar_contracts(addresses):
     """Return the list of addresses of similar contracts for
 
-    Url is base_url + address
+    Url is base_url + address.
     """
     similar = dict()
     for addr in addresses:
@@ -146,26 +186,46 @@ def write_diff(ref_addr, ref_code, sim_addr, sim_code, folder="diffs"):
     """Write diff given the code
     """
     diff = compute_diff(ref_code, sim_code)
-    if diff:
-        curr_folder = os.path.join(folder, ref_addr)
-        os.makedirs(curr_folder, exist_ok=True)
 
-        with open(os.path.join(curr_folder, "{}_code".format(ref_addr)),
-                  'w') as fs:
-            fs.write(ref_code)
+    if not diff:
+        logging.debug("Same code, the diff will not be written.")
+        return
 
-        with open(os.path.join(curr_folder, sim_addr), 'w') as fs:
-            logging.debug("Writing diff in %s", curr_folder)
-            fs.write(diff)
+    curr_folder = os.path.join(folder, ref_addr)
+    os.makedirs(curr_folder, exist_ok=True)
+
+    ref_code_fn = os.path.join(curr_folder, "{}_code".format(ref_addr))
+
+    with open(ref_code_fn, 'w') as fs:
+        fs.write(ref_code)
+
+    with open(os.path.join(curr_folder, sim_addr), 'w') as fs:
+        logging.debug("Writing diff in %s", curr_folder)
+        fs.write(diff)
 
 
-def process_addr(ref_addr, similar_addresses):
-    """Take a reference address and similar ones and write the diffs
+def process_addr(ref_addr, verified_addresses, i, nb_addr):
+    """Take a reference address and similar ones and write the diffs.
     """
-    ref_code = extract_code(ref_addr)
+    logging.info("Processing address number %s / %s", i + 1, nb_addr)
+    similar_addresses = find_similar(ref_addr) & verified_addresses
+
+    def safe_extract_code(addr):
+        try:
+            return extract_code(addr)
+        except ValueError as e:
+            logging.warning("%s", str(e))
+
+    ref_code = safe_extract_code(ref_addr)
+    if ref_code is None:
+        return
+
     similar_codes = dict()
     for addr in similar_addresses:
-        similar_codes[addr] = extract_code(addr)
+        sim_code = safe_extract_code(addr)
+        if sim_code is None:
+            continue
+        similar_codes[addr] = sim_code
 
     for addr in similar_codes:
         write_diff(ref_addr=ref_addr,
@@ -174,7 +234,7 @@ def process_addr(ref_addr, similar_addresses):
                    sim_code=similar_codes[addr])
 
 
-def main(starting_addr=None, ending_addr=3, folder="diffs"):
+def main(starting_addr=None, ending_addr=3, folder="diffs", parallel=True):
     """The main function
 
     _Retrieve nb_addr verified contracts
@@ -186,9 +246,9 @@ def main(starting_addr=None, ending_addr=3, folder="diffs"):
         nb_addr: the number of addresses to use
 
     """
-    verified_addresses = always_cache(fetch_addresses_verified)
+    verified_addresses = fetch_addresses_verified()
 
-    # addresses is a sorted list to be deterministic
+    # addresses is sorted for determinism
     addresses = sorted(verified_addresses)
 
     if starting_addr is None:
@@ -203,23 +263,24 @@ def main(starting_addr=None, ending_addr=3, folder="diffs"):
 
     logging.info("Using %s addresses", nb_addr)
 
-    for i, addr in enumerate(addresses):
-        logging.info("Processing address number %s / %s",
-                     i + 1,
-                     nb_addr)
-        similar_addresses = find_similar(addr) & verified_addresses
-        process_addr(ref_addr=addr,
-                     similar_addresses=similar_addresses)
+    if parallel:
+        with Pool(2) as p:
+            p.starmap(process_addr, [(ref_addr, verified_addresses, i, nb_addr)
+                      for i, ref_addr in enumerate(addresses)])
+    else:
+        for i, ref_addr in enumerate(addresses):
+            process_addr(ref_addr, verified_addresses, i, nb_addr)
 
 
 if __name__ == "__main__":
+    logging.getLogger().setLevel(logging.DEBUG)
     logging.getLogger().setLevel(logging.INFO)
     logging.info("Starting")
 
-    # try with 600, should take less than 4 hours
     step = 100
     for i in range(0, 3000, step):
         logging.info("%s addresses processed", i)
         main(starting_addr=i,
-             ending_addr=i+step)
+             ending_addr=i+step,
+             parallel=True)
     logging.info("Ending")
