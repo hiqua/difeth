@@ -1,11 +1,9 @@
 # difeth
 
 ## Setup
-`pyvenv env`
-
-`. env/bin/activate`
-
-`pip install -r requirements.txt`
+* `pyvenv env`
+* `. env/bin/activate`
+* `pip install -r requirements.txt`
 
 ## Crawling
 `python3 crawl.py`
