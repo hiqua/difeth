@@ -4,3 +4,4 @@ colorama
 py-solc
 pyopenssl
 requests
+urllib3
