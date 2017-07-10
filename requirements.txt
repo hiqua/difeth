@@ -1,8 +1,6 @@
 CacheControl
-bs4 
-cachier
-cashier
+bs4
 colorama
-py-solc 
-pymongo
+py-solc
+pyopenssl
 requests

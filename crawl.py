@@ -12,7 +12,10 @@ import os
 from functools import partialmethod
 from multiprocessing import Pool
 from pprint import pprint
-from ssl import SSLError
+import OpenSSL
+
+import urllib3.contrib.pyopenssl
+
 
 import requests
 from bs4 import BeautifulSoup
@@ -24,6 +27,7 @@ from solc.exceptions import SolcError
 
 verified_url = "https://etherscan.io/contractsVerified"
 
+urllib3.contrib.pyopenssl.inject_into_urllib3()
 session = CacheControl(requests.session())
 
 
@@ -43,7 +47,8 @@ def fetch(url, nb_attempts=5):
     for _ in range(nb_attempts):
         try:
             return _fetch()
-        except (SSLError, requests.exceptions.RequestException) as e:
+        except (OpenSSL.SSL.Error,
+                requests.exceptions.RequestException) as e:
             logging.warning(e)
 
     logging.error('Page %s could not be fetched, returning ""', url)
