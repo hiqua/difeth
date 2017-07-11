@@ -258,20 +258,22 @@ def main(starting_addr=None, ending_addr=3, folder="diffs", parallel=True):
 
     if starting_addr is None:
         starting_addr = 0
+
     if ending_addr is None:
         ending_addr = len(addresses)
 
-    addresses = itertools.islice(addresses,
-                                 starting_addr,
-                                 ending_addr)
-    nb_addr = ending_addr - starting_addr
+    addresses = list(itertools.islice(addresses,
+                                      starting_addr,
+                                      ending_addr))
+    nb_addr = len(addresses)
 
     logging.info("Using %s addresses", nb_addr)
 
     if parallel:
         with Pool(2) as p:
-            p.starmap(process_addr, [(ref_addr, verified_addresses, i, nb_addr)
-                      for i, ref_addr in enumerate(addresses)])
+            p.starmap(process_addr,
+                      [(ref_addr, verified_addresses, i, nb_addr)
+                       for i, ref_addr in enumerate(addresses)])
     else:
         for i, ref_addr in enumerate(addresses):
             process_addr(ref_addr, verified_addresses, i, nb_addr)
