@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
+Crawl ethscan to find verified (i.e. with solidity code provided) contracts and
+similar contracts, compute the diffs and save them locally.
 addresses are used as strings
-
-XXX: mirror etherscan locally
 """
-import datetime
 import difflib
 import itertools
 import logging
 import os
-from functools import partialmethod
 from multiprocessing import Pool
-from pprint import pprint
 import OpenSSL
 
 import urllib3.contrib.pyopenssl
@@ -20,15 +17,15 @@ import urllib3.contrib.pyopenssl
 import requests
 from bs4 import BeautifulSoup
 
-from cache import always_cache, cache_func_and_arg
+from cache import cache_func_and_arg
 from cachecontrol import CacheControl
 from solc import compile_source
 from solc.exceptions import SolcError
 
-verified_url = "https://etherscan.io/contractsVerified"
+VERIFIED_URL = "https://etherscan.io/contractsVerified"
 
 urllib3.contrib.pyopenssl.inject_into_urllib3()
-session = CacheControl(requests.session())
+SESSION = CacheControl(requests.session())
 
 
 def fetch(url, nb_attempts=5):
@@ -38,7 +35,7 @@ def fetch(url, nb_attempts=5):
     Retrying usually works as a workaround, so we do that.
     """
     def _fetch():
-        request = session.get(url)
+        request = SESSION.get(url)
         if not request:
             logging.warning("Got status code: %s", request.status_code)
         request.raise_for_status()
@@ -46,10 +43,12 @@ def fetch(url, nb_attempts=5):
 
     for _ in range(nb_attempts):
         try:
-            return _fetch()
+            res = _fetch()
         except (OpenSSL.SSL.Error,
                 requests.exceptions.RequestException) as e:
             logging.warning(e)
+        else:
+            return res
 
     logging.error('Page %s could not be fetched, returning ""', url)
     return ""
@@ -68,10 +67,12 @@ def same_code(a_src, b_src):
         a boolean that says whether the source code are equivalent.
     """
     try:
-        return compile_source(a_src) == compile_source(b_src)
+        res = compile_source(a_src) == compile_source(b_src)
     except SolcError:
         logging.debug("Failure to compile using solc.")
         return False
+    else:
+        return res
 
 
 @cache_func_and_arg
@@ -108,9 +109,11 @@ def extract_solidity_code(addresses):
     code = dict()
     for addr in addresses:
         try:
-            code[addr] = extract_code(addr)
+            res = extract_code(addr)
         except ValueError as e:
             logging.info("%s", str(e))
+        else:
+            code[addr] = res
 
     return code
 
@@ -118,7 +121,7 @@ def extract_solidity_code(addresses):
 def nb_verified():
     """Get the current page number and the number of pages of verified contracts
     """
-    content = fetch(verified_url)
+    content = fetch(VERIFIED_URL)
     soup = BeautifulSoup(content, 'html.parser')
     numbers = soup.find(id="ContentPlaceHolder1_PagingPanel")
     curr_page = int(numbers.findChildren()[4].getText())
@@ -142,7 +145,7 @@ def fetch_addresses_verified():
     def get_ad_on_page(i):
         """Extract addresses on page i of verified contracts
         """
-        url = verified_url + "/{}".format(i)
+        url = VERIFIED_URL + "/{}".format(i)
         return extract_address_tags(url)
 
     _, total_page = nb_verified()
@@ -187,7 +190,7 @@ def find_similar_contracts(addresses):
     return similar
 
 
-def write_diff(ref_addr, ref_code, sim_addr, sim_code, folder="diffs"):
+def write_diff(ref_addr, ref_code, sim_addr, sim_code, folder):
     """Write diff given the code
     """
     diff = compute_diff(ref_code, sim_code)
@@ -201,25 +204,29 @@ def write_diff(ref_addr, ref_code, sim_addr, sim_code, folder="diffs"):
 
     ref_code_fn = os.path.join(curr_folder, "{}_code".format(ref_addr))
 
-    with open(ref_code_fn, 'w') as fs:
-        fs.write(ref_code)
+    with open(ref_code_fn, 'w') as ref_code_fs:
+        ref_code_fs.write(ref_code)
 
-    with open(os.path.join(curr_folder, sim_addr), 'w') as fs:
+    with open(os.path.join(curr_folder, sim_addr), 'w') as sim_fs:
         logging.debug("Writing diff in %s", curr_folder)
-        fs.write(diff)
+        sim_fs.write(diff)
 
 
-def process_addr(ref_addr, verified_addresses, i, nb_addr):
+def process_addr(ref_addr, verified_addresses, i, nb_addr, folder):
     """Take a reference address and similar ones and write the diffs.
     """
     logging.info("Processing address number %s / %s", i + 1, nb_addr)
     similar_addresses = find_similar(ref_addr) & verified_addresses
 
     def safe_extract_code(addr):
+        """Extract code with throwing exception
+        """
         try:
-            return extract_code(addr)
+            code = extract_code(addr)
         except ValueError as e:
             logging.warning("%s", str(e))
+        else:
+            return code
 
     ref_code = safe_extract_code(ref_addr)
     if ref_code is None:
@@ -236,7 +243,8 @@ def process_addr(ref_addr, verified_addresses, i, nb_addr):
         write_diff(ref_addr=ref_addr,
                    ref_code=ref_code,
                    sim_addr=addr,
-                   sim_code=similar_codes[addr])
+                   sim_code=similar_codes[addr],
+                   folder=folder)
 
 
 def main(starting_addr=None, ending_addr=3, folder="diffs", parallel=True):
@@ -270,13 +278,13 @@ def main(starting_addr=None, ending_addr=3, folder="diffs", parallel=True):
     logging.info("Using %s addresses", nb_addr)
 
     if parallel:
-        with Pool(2) as p:
-            p.starmap(process_addr,
-                      [(ref_addr, verified_addresses, i, nb_addr)
-                       for i, ref_addr in enumerate(addresses)])
+        with Pool(2) as pool:
+            pool.starmap(process_addr,
+                         [(ref_addr, verified_addresses, i, nb_addr, folder)
+                          for i, ref_addr in enumerate(addresses)])
     else:
         for i, ref_addr in enumerate(addresses):
-            process_addr(ref_addr, verified_addresses, i, nb_addr)
+            process_addr(ref_addr, verified_addresses, i, nb_addr, folder)
 
 
 if __name__ == "__main__":
@@ -284,10 +292,10 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
     logging.info("Starting")
 
-    step = 100
-    for i in range(0, 3000, step):
-        logging.info("%s addresses processed", i)
-        main(starting_addr=i,
-             ending_addr=i+step,
+    STEP = 100
+    for starting_addr_ in range(0, 3000, STEP):
+        logging.info("%s addresses processed", starting_addr_)
+        main(starting_addr=starting_addr_,
+             ending_addr=starting_addr_ + STEP,
              parallel=True)
     logging.info("Ending")

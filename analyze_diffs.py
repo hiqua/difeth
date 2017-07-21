@@ -1,6 +1,9 @@
+"""
+Analyze diffs produced by the crawler.
+"""
 import os
 import shutil
-from pprint import pprint
+from contextlib import suppress
 
 from colorama import Fore, Style
 
@@ -11,10 +14,10 @@ def reset_style():
     print(Style.RESET_ALL, end='')
 
 
-def is_diff(fn):
+def is_diff(diff_fn):
     """Tells if the file a diff, or full code.
     """
-    return not fn.endswith("_code")
+    return not diff_fn.endswith("_code")
 
 
 def find_diffs(min_size, max_size, folder="diffs"):
@@ -22,9 +25,9 @@ def find_diffs(min_size, max_size, folder="diffs"):
 
     Sizes are given in bytes.
     """
-    for (curr_dir, sub_dir, fns) in os.walk(folder):
-        for fn in filter(is_diff, fns):
-            full_path = os.path.join(curr_dir, fn)
+    for curr_dir, _, fns in os.walk(folder):
+        for diff_fn in filter(is_diff, fns):
+            full_path = os.path.join(curr_dir, diff_fn)
             size = os.path.getsize(full_path)
             if min_size <= size < max_size:
                 yield (full_path, size)
@@ -49,8 +52,8 @@ def get_color(line):
 def print_diff(diff_fn):
     """Print the given diff with some syntax highlighting.
     """
-    with open(diff_fn) as fs:
-        for line in fs:
+    with open(diff_fn) as diff_fs:
+        for line in diff_fs:
             # remove trailing \n
             line = line[:len(line) - 1]
             color = get_color(line)
@@ -58,8 +61,10 @@ def print_diff(diff_fn):
             reset_style()
 
 
-def unzip(l):
-    return list(zip(*l))
+def unzip(lst):
+    """unzip([(1,2),(3,4),(5,6)]) == [(1, 3, 5), (2, 4, 6)]
+    """
+    return list(zip(*lst))
 
 
 def display_batch(min_size, max_size):
@@ -69,57 +74,56 @@ def display_batch(min_size, max_size):
     assert len(tmp) == 2
     diff_fns, sizes = tmp[0], tmp[1]
 
-    def forward(i):
-        return min(len(diff_fns) - 1, i + 1)
-
-    def back(i):
-        return max(0, i-1)
-
     i = 0
     while True:
         print(Fore.RED + "{}/{}: {} (size: {}B)"
-                         .format(i,
-                                 len(diff_fns),
-                                 diff_fns[i],
-                                 sizes[i]))
+              .format(i,
+                      len(diff_fns),
+                      diff_fns[i],
+                      sizes[i]))
 
         reset_style()
         print_diff(diff_fns[i])
         if i == len(diff_fns) - 1:
             print("This is the last diff.")
         action = input("(s)ave diff, (p)revious, (n)ext (Enter), (q)uit\n")
+
         if action == "s":
+            action = "n"
             yield diff_fns[i]
-            i = forward(i)
-        elif action == "n" or action == "":
-            i = forward(i)
+
+        if action == "n" or action == "":
+            i = min(len(diff_fns) - 1, i + 1)
         elif action == "p":
-            i = back(i)
+            i = max(0, i-1)
         elif action == "q":
             break
 
 
 def copy_diffs(saved_diff_fn, output_dir="interesting_diffs"):
+    """Copy the diffs whose filenames are listed in the output_dir
+    """
     os.makedirs(output_dir, exist_ok=True)
-    with open(saved_diff_fn) as fs:
-        for fn in fs:
-            fn = fn[:len(fn)-1]
-            dest_name = os.path.split(fn)[-1]
+    with open(saved_diff_fn) as saved_diff_fs:
+        for diff_fn in saved_diff_fs:
+            diff_fn = diff_fn[:len(diff_fn)-1]
+            dest_name = os.path.split(diff_fn)[-1]
             dest_file = os.path.join(output_dir, dest_name)
             if os.path.exists(dest_file):
                 dest_file += "_0"
 
-            shutil.copy2(fn, dest_file)
+            shutil.copy2(diff_fn, dest_file)
 
 
 if __name__ == '__main__':
     MIN_SIZE = 0000
     STEP = 10000
-    saved_diff_fn = "interesting_diffs.txt"
+    SAVED_DIFF_FN = "interesting_diffs.txt"
 
-    # loop / IO in this order to get the results right away
-    for diff_fn in display_batch(MIN_SIZE, MIN_SIZE + STEP):
-        with open(saved_diff_fn, 'a') as fs:
-            fs.write(diff_fn + '\n')
+    with suppress(FileNotFoundError):
+        # loop / IO in this order to get the results right away
+        for diff_fn_ in display_batch(MIN_SIZE, MIN_SIZE + STEP):
+            with open(SAVED_DIFF_FN, 'a') as saved_diff_fs_:
+                saved_diff_fs_.write(diff_fn_ + '\n')
 
-    copy_diffs(saved_diff_fn=saved_diff_fn)
+        copy_diffs(saved_diff_fn=SAVED_DIFF_FN)

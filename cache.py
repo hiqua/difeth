@@ -1,15 +1,13 @@
+"""
+Provide cache decorators.
+"""
 import hashlib
 import logging
 import os
 import pickle
 import threading
 
-_activate_cache = True
-
-
-def set_pickle_cache(activate):
-    global _activate_cache
-    _activate_cache = activate
+_LOCK = threading.Lock()
 
 
 def pickle_cache_witness(var_fn, var_p, var_check, hook=None):
@@ -24,24 +22,24 @@ def pickle_cache_witness(var_fn, var_p, var_check, hook=None):
     Returns:
         the result of var_fn, from the cache if var_check(var_cached).
     """
-    if not _activate_cache or var_p is None:
+    if var_p is None:
         logging.debug("Cache disabled, running function.")
         return var_fn()
 
     try:
-        with open(var_p, 'rb') as f:
-            var = pickle.load(f)
+        with open(var_p, 'rb') as var_fs:
+            var = pickle.load(var_fs)
 
         if var_check(var):
             logging.debug(
-                "{} cached, variable loaded.".format(var_fn.__name__))
+                "%s cached, variable loaded.", var_fn.__name__)
             if hook is not None:
                 hook()
         else:
             raise FileNotFoundError
 
     except FileNotFoundError:
-        logging.debug("{} cache miss, running.".format(var_fn.__name__))
+        logging.debug("%s cache miss, running.", var_fn.__name__)
         var = var_fn()
         pickle.dump(var, open(var_p, 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -65,11 +63,9 @@ def pickle_cache_witness_dec(var_p, var_check, hook=None):
 
 def always_cache(func, var_p=None, hook=None):
     if var_p is None:
-        var_p = "pickle.d/" + func.__name__ + ".p"
-    return pickle_cache_witness(func, var_p, (lambda _: True), hook=hook)
+        var_p = os.path.join("pickle.d", func.__name__ + ".p")
 
-
-_lock = threading.Lock()
+    return pickle_cache_witness(func, var_p, lambda _: True, hook=hook)
 
 
 def cache_func_and_arg(func):
@@ -80,13 +76,13 @@ def cache_func_and_arg(func):
         var_p = os.path.join("pickle.d",
                              func.__name__ + "_" + get_hash(arg) + ".p")
         if os.path.exists(var_p):
-            with _lock:
-                with open(var_p, 'rb') as fs:
-                    return pickle.load(fs)
+            with _LOCK:
+                with open(var_p, 'rb') as var_fs:
+                    return pickle.load(var_fs)
         else:
             res = func(arg)
-            with _lock:
-                with open(var_p, 'wb') as fs:
-                    pickle.dump(res, fs)
+            with _LOCK:
+                with open(var_p, 'wb') as var_fs:
+                    pickle.dump(res, var_fs)
             return res
     return new_func
